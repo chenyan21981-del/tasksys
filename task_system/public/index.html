@@ -1,0 +1,1724 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>18game 任务系统</title>
+  <style>
+    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; margin: 20px; background:#f7f7f9; }
+    .card { background:#fff; border-radius:12px; padding:16px; margin-bottom:14px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+    input,button,textarea { padding:8px; margin:6px 0; width:100%; box-sizing:border-box; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+    .task { border:1px solid #eee; border-radius:8px; padding:10px; margin:8px 0; }
+    .muted { color:#666; font-size:12px; }
+    .hidden { display:none !important; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { border-bottom:1px solid #eee; padding:8px; text-align:left; }
+    .layout { display:grid; grid-template-columns:220px 1fr; gap:14px; align-items:start; }
+    .menu button { text-align:left; }
+    .menu button.active { background:#111; color:#fff; }
+    .btn-sm { width:auto; padding:4px 8px; margin:2px; font-size:12px; }
+    .kpi-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; }
+    .kpi { border:1px solid #eee; border-radius:10px; padding:10px; background:#fafafa; }
+    .kpi .n { font-size:22px; font-weight:700; }
+    .chart-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .bar { height:10px; background:#eceff4; border-radius:999px; overflow:hidden; }
+    .bar > span { display:block; height:100%; background:#4f7cff; }
+    .vchart { display:flex; align-items:flex-end; gap:8px; min-height:220px; padding:8px; border:1px solid #eee; border-radius:8px; background:#fff; overflow-x:auto; }
+    .vbar-col { min-width:52px; display:flex; flex-direction:column; align-items:center; gap:4px; }
+    .vbar-stack { width:32px; height:170px; display:flex; flex-direction:column; justify-content:flex-end; border-radius:6px; overflow:hidden; background:#f2f4f7; }
+    .vbar-a { background:#4f7cff; }
+    .vbar-b { background:#44c28d; }
+    .vbar-label { font-size:11px; color:#666; text-align:center; white-space:normal; line-height:1.2; }
+    .vbar-num { font-size:11px; font-weight:600; }
+  </style>
+</head>
+<body>
+  <h2>18game 任务系统（账号版）</h2>
+
+  <div class="card" id="loginCard">
+    <h3>登录</h3>
+    <input id="loginUser" placeholder="用户名" />
+    <input id="loginPass" type="password" placeholder="密码" />
+    <button onclick="login()">登录</button>
+    <div id="loginResult" class="muted"></div>
+  </div>
+
+  <div id="app" class="hidden layout">
+    <div class="card menu">
+      <div id="me" class="muted"></div>
+      <button id="menuTasks" class="active" onclick="showSection('tasks')">进行中任务</button>
+      <button id="menuHistory" onclick="showSection('history')">历史任务</button>
+      <button id="menuDashboard" onclick="showSection('dashboard')">效率面板</button>
+      <button id="menuPersonal" onclick="showSection('personal')">个人面板</button>
+      <button id="menuCreate" class="hidden" onclick="showSection('create')">新建任务</button>
+      <button id="menuAdmin" class="hidden" onclick="showSection('admin')">账号管理</button>
+      <button onclick="logout()">退出登录</button>
+    </div>
+
+    <div>
+      <div class="card" id="sectionTasks">
+        <h3>进行中任务</h3>
+        <div class="row3">
+          <input id="filterCreator" placeholder="主任务创建人，如 @rock" />
+          <input id="filterRequester" placeholder="主任务提出人，如 @pm" />
+          <input id="filterSubtaskAssignee" placeholder="子任务责任人，如 @joli" />
+          <input id="filterTaskName" placeholder="主任务名称关键词，如 登录" />
+          <input id="filterSubtaskName" placeholder="子任务名称关键词，如 联调" />
+          <button onclick="loadTasks()">查询</button>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button style="width:auto;" onclick="exportTaskTemplates()">导出模板</button>
+          <button style="width:auto;" onclick="openBatchImportModal()">批量导入任务</button>
+          <button style="width:auto;" onclick="exportAllTasks()">导出全部任务</button>
+          <button style="width:auto;" onclick="openCreateTaskModal()">创建主任务</button>
+        </div>
+        <div id="tasks"></div>
+      </div>
+
+      <div class="card hidden" id="sectionHistory">
+        <h3>历史任务（已完成）</h3>
+        <div class="row3">
+          <input id="filterCreatorHistory" placeholder="主任务创建人，如 @rock" />
+          <input id="filterRequesterHistory" placeholder="主任务提出人，如 @pm" />
+          <input id="filterSubtaskAssigneeHistory" placeholder="子任务责任人，如 @joli" />
+          <input id="filterTaskNameHistory" placeholder="主任务名称关键词，如 登录" />
+          <input id="filterSubtaskNameHistory" placeholder="子任务名称关键词，如 联调" />
+          <button onclick="loadHistory()">查询</button>
+        </div>
+        <div id="historyTasks"></div>
+      </div>
+
+      <div class="card hidden" id="sectionDashboard">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <h3 style="margin:0;">任务效率分析面板</h3>
+          <div class="row3" style="min-width:520px;max-width:760px;">
+            <select id="dashRange" onchange="onDashboardRangeChange()">
+              <option value="day">按天</option>
+              <option value="week">按周</option>
+              <option value="month" selected>按月</option>
+              <option value="all">全部</option>
+            </select>
+            <input id="dashProject" placeholder="项目" value="18game" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <input id="dashFrom" placeholder="开始日期 YYYY-MM-DD（自动填充，可手改）" />
+          <input id="dashTo" placeholder="结束日期 YYYY-MM-DD（自动填充，可手改）" />
+        </div>
+        <button onclick="loadDashboard()">刷新数据面板</button>
+        <div id="dashboardBox" class="muted">点击“刷新数据面板”加载</div>
+      </div>
+
+      <div class="card hidden" id="sectionPersonal">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+          <h3 style="margin:0;">单人数据面板（当前登录账号）</h3>
+          <div class="row3" style="min-width:520px;max-width:760px;">
+            <select id="pdashRange" onchange="onPersonalRangeChange()">
+              <option value="day">按天</option>
+              <option value="week">按周</option>
+              <option value="month" selected>按月</option>
+              <option value="all">全部</option>
+            </select>
+            <input id="pdashProject" placeholder="项目" value="18game" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <input id="pdashFrom" placeholder="开始日期 YYYY-MM-DD（自动填充，可手改）" />
+          <input id="pdashTo" placeholder="结束日期 YYYY-MM-DD（自动填充，可手改）" />
+        </div>
+        <button onclick="loadPersonalDashboard()">刷新个人面板</button>
+        <div id="personalDashboardBox" class="muted">点击“刷新个人面板”加载</div>
+      </div>
+
+      <div class="card hidden" id="sectionCreate">
+        <h3>创建主任务</h3>
+        <input id="name" placeholder="任务名称" />
+        <input id="docLink" placeholder="文档链接（选填） https://..." />
+        <div class="row">
+          <input id="requester" placeholder="需求提出人 @pm" />
+          <input id="project" placeholder="项目" value="18game" />
+        </div>
+        <div class="row">
+          <select id="taskType">
+            <option value="新需求">新需求</option>
+            <option value="bug修复">bug修复</option>
+            <option value="优化">优化</option>
+          </select>
+          <div class="muted" style="align-self:center;">任务类型</div>
+        </div>
+        <div class="row">
+          <select id="priority">
+            <option value="P0">P0</option>
+            <option value="P1">P1</option>
+            <option value="P2" selected>P2</option>
+            <option value="P3">P3</option>
+          </select>
+          <div class="muted" style="align-self:center;">优先级（P0最紧急）</div>
+        </div>
+        <div class="row">
+          <input id="ccList" placeholder="抄送（可选，逗号分隔）如 @pm,@qa" />
+          <div></div>
+        </div>
+        <div class="row"><input id="startTime" placeholder="开始时间 YYYY-MM-DD HH:mm" /><input id="endTime" placeholder="结束时间 YYYY-MM-DD HH:mm" /></div>
+        <input id="cycleDisplay" placeholder="周期（自动计算）" readonly style="background:#f7f7f7;cursor:not-allowed;" />
+        <textarea id="note" placeholder="备注（可选）"></textarea>
+        <button id="createTaskBtn" onclick="createTask()">创建主任务</button>
+        <div class="muted" style="margin-top:6px;white-space:pre-line;">命令模板：
+/task 创建主任务 名称=... 类型=新需求|bug修复|优化 文档=https://... 提出人=@xxx 抄送=@a,@b 开始时间=YYYY-MM-DD HH:mm 结束时间=YYYY-MM-DD HH:mm 项目=18game</div>
+        <div id="createResult" class="muted"></div>
+      </div>
+
+      <div class="card hidden" id="sectionAdmin">
+        <h3>账号管理（仅超级管理员）</h3>
+        <div class="row">
+          <button onclick="createAccount()">新增账号（弹窗）</button>
+          <button onclick="loadAccounts()">刷新账号列表</button>
+        </div>
+        <div id="accounts"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="appModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999;">
+    <div style="background:#fff;width:min(720px,92vw);max-height:80vh;overflow:auto;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
+      <h3 id="appModalTitle" style="margin-top:0"></h3>
+      <div id="appModalBody"></div>
+      <div id="appModalActions" style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"></div>
+    </div>
+  </div>
+
+<script>
+let token = localStorage.getItem('task_token') || '';
+let currentUser = null;
+let creatingTask = false;
+
+function isAdminRole(role) {
+  return role === 'admin' || role === 'superadmin';
+}
+
+function isSuperAdminRole(role) {
+  return role === 'superadmin';
+}
+
+function isProductPosition(position) {
+  return String(position || '').trim() === '产品';
+}
+
+function showModal({ title = '', bodyHtml = '', actions = [] }) {
+  return new Promise(resolve => {
+    appModalTitle.textContent = title;
+    appModalBody.innerHTML = bodyHtml;
+    appModalActions.innerHTML = '';
+    actions.forEach(a => {
+      const btn = document.createElement('button');
+      btn.textContent = a.text;
+      btn.className = a.className || '';
+      btn.onclick = () => {
+        appModal.classList.add('hidden');
+        resolve(a.value);
+      };
+      appModalActions.appendChild(btn);
+    });
+    appModal.classList.remove('hidden');
+  });
+}
+
+function escHtml(s='') {
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function fmtTime(v) {
+  if (!v) return '-';
+  return String(v).replace('T', ' ');
+}
+
+let accountCache = [];
+
+function toDateTimeLocal(v = '') {
+  const s = String(v || '').trim();
+  if (!s) return '';
+  const m = s.replace(' ', 'T').match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/);
+  return m ? m[1] : '';
+}
+
+function bindTimePicker(input) {
+  if (!input) return;
+  input.type = 'datetime-local';
+  input.step = 1;
+  const openPicker = () => { try { input.showPicker && input.showPicker(); } catch {} };
+  input.addEventListener('focus', openPicker);
+  input.addEventListener('click', openPicker);
+}
+
+function bindDatePicker(input) {
+  if (!input) return;
+  input.type = 'date';
+  const openPicker = () => { try { input.showPicker && input.showPicker(); } catch {} };
+  input.addEventListener('focus', openPicker);
+  input.addEventListener('click', openPicker);
+}
+
+async function ensureAccountsLoaded(q = '') {
+  if (!q && Array.isArray(accountCache) && accountCache.length) return accountCache;
+  let ret = [];
+  try {
+    ret = await request('/accounts/suggest' + (q ? `?q=${encodeURIComponent(q)}` : ''));
+  } catch {
+    ret = [];
+  }
+  accountCache = Array.isArray(ret) ? ret : [];
+  return accountCache;
+}
+
+function applyAccountDatalist(input, listId = 'accountCandidates') {
+  if (!input) return;
+  let dl = document.getElementById(listId);
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = listId;
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = (accountCache || []).map(a => {
+    const tg = a?.tgUsername || '';
+    const u = a?.username || '';
+    const role = a?.role || '';
+    const v = tg || (u ? `@${u}` : '');
+    if (!v) return '';
+    return `<option value="${escHtml(v)}">${escHtml([u, role].filter(Boolean).join(' | '))}</option>`;
+  }).join('');
+  input.setAttribute('list', listId);
+}
+
+function bindMentionSuggest(input) {
+  if (!input) return;
+  let t = null;
+  input.addEventListener('input', () => {
+    const raw = String(input.value || '');
+    const sepIndexes = [raw.lastIndexOf(','), raw.lastIndexOf('，'), raw.lastIndexOf(' ')];
+    const start = Math.max(...sepIndexes) + 1;
+    const prefix = raw.slice(0, start);
+    const seg = raw.slice(start).trimStart();
+    const q = seg.replace(/^@+/, '').trim();
+    clearTimeout(t);
+    t = setTimeout(async () => {
+      await ensureAccountsLoaded(q);
+      const listId = `mentionCandidates_${input.id || 'x'}`;
+      let dl = document.getElementById(listId);
+      if (!dl) {
+        dl = document.createElement('datalist');
+        dl.id = listId;
+        document.body.appendChild(dl);
+      }
+      dl.innerHTML = (accountCache || []).map(a => {
+        const tg = a?.tgUsername || '';
+        const u = a?.username || '';
+        const role = a?.role || '';
+        const v = tg || (u ? `@${u}` : '');
+        if (!v) return '';
+        return `<option value="${escHtml(prefix + v)}">${escHtml([u, role].filter(Boolean).join(' | '))}</option>`;
+      }).join('');
+      input.setAttribute('list', listId);
+    }, 150);
+  });
+}
+
+function addDaysByCycle(startIso, cycleText) {
+  const start = Date.parse(startIso);
+  if (!Number.isFinite(start)) return '';
+  const txt = String(cycleText || '').trim();
+  const m = txt.match(/^(\d+(?:\.\d+)?)\s*(天|周|小时|h|H|分钟|分)$/);
+  if (!m) return '';
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  const unit = m[2];
+
+  let d = new Date(start);
+  if (unit === '小时' || unit === 'h' || unit === 'H') {
+    d = new Date(start + n * 3600 * 1000);
+  } else if (unit === '分钟' || unit === '分') {
+    d = new Date(start + n * 60 * 1000);
+  } else {
+    // 天/周按工作日计算，自动跳过周末
+    const workdays = unit === '周' ? n * 5 : n;
+    const whole = Math.floor(workdays);
+    const fraction = workdays - whole;
+    let added = 0;
+    while (added < whole) {
+      d.setDate(d.getDate() + 1);
+      const day = d.getDay();
+      if (day !== 0 && day !== 6) added += 1;
+    }
+    if (fraction > 0) d = new Date(d.getTime() + fraction * 24 * 3600 * 1000);
+  }
+
+  const p = (x) => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+function normUserClient(v='') {
+  return String(v || '').trim().replace(/^@+/, '').toLowerCase();
+}
+
+function canOperateSubtaskClient(s) {
+  if (isAdminRole(currentUser?.role)) return true;
+  const me = normUserClient(currentUser?.tgUsername || currentUser?.username || '');
+  const assignee = normUserClient(s?.assignee || '');
+  return !!me && !!assignee && me === assignee;
+}
+
+function renderSubtaskRows(taskNo, subtasks = []) {
+  if (!Array.isArray(subtasks) || !subtasks.length) {
+    return '<tr><td colspan="11" class="muted">暂无子任务</td></tr>';
+  }
+  return subtasks.map((s, i) => {
+    const canOp = canOperateSubtaskClient(s);
+    const adminEditBtn = isAdminRole(currentUser?.role)
+      ? `<button class="btn-sm" onclick="editSubtaskTimingPrompt(${Number(s.id)},'${String(taskNo).replace(/'/g, "&#39;")}')">编辑</button>`
+      : '';
+    const adminDeleteBtn = isAdminRole(currentUser?.role)
+      ? `<button class="btn-sm" style="float:right;" onclick="deleteSubtaskConfirm(${Number(s.id)},'${String(taskNo).replace(/'/g, "&#39;")}')">删除</button>`
+      : '';
+    const actionBtns = canOp
+      ? `${adminDeleteBtn}${adminEditBtn}<button class="btn-sm" onclick="operateSubtaskPrompt(${Number(s.id)},'${String(taskNo).replace(/'/g, "&#39;")}')">处理子任务</button><button class="btn-sm" onclick="subtaskRemarkPrompt(${Number(s.id)})">添加备注</button>`
+      : (adminDeleteBtn || adminEditBtn || '<span class="muted">仅管理员/负责人可操作</span>');
+    return `
+    <tr>
+      <td>${i + 1}</td>
+      <td>#${s.id}</td>
+      <td>${escHtml(s.title || '-')}</td>
+      <td>${escHtml(s.description || '-')}</td>
+      <td>${escHtml(s.latestNote || '-')}</td>
+      <td>${escHtml(s.assignee || '-')}</td>
+      <td>${escHtml(s.status || '-')}</td>
+      <td>${fmtTime(s.receivedAt)}</td>
+      <td>${fmtTime(s.dueAt)}</td>
+      <td>${fmtTime(s.completedAt)}</td>
+      <td>${actionBtns}</td>
+    </tr>
+  `;
+  }).join('');
+}
+
+
+function renderSubtaskPanel(taskNo, subtasks = [], defaultExpanded = false) {
+  const safeId = `subtasks_${String(taskNo || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  const expanded = defaultExpanded ? 'true' : 'false';
+  const display = defaultExpanded ? 'block' : 'none';
+  const label = defaultExpanded ? '收起子任务' : '展开子任务';
+  return `
+    <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+      <b>子任务（${subtasks.length}）</b>
+      <button class="btn-sm" id="btn_${safeId}" onclick="toggleSubtasks('${safeId}')">${label}</button>
+    </div>
+    <div id="${safeId}" data-expanded="${expanded}" style="display:${display};margin-top:6px;">
+      <table>
+        <thead><tr><th>序号</th><th>ID</th><th>标题</th><th>描述</th><th>备注</th><th>负责人</th><th>状态</th><th>开始</th><th>到期</th><th>完成</th><th>操作</th></tr></thead>
+        <tbody>${renderSubtaskRows(taskNo, subtasks)}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function toggleSubtasks(panelId) {
+  const panel = document.getElementById(panelId);
+  const btn = document.getElementById(`btn_${panelId}`);
+  if (!panel) return;
+  const expanded = panel.getAttribute('data-expanded') === 'true';
+  panel.setAttribute('data-expanded', expanded ? 'false' : 'true');
+  panel.style.display = expanded ? 'none' : 'block';
+  if (btn) btn.textContent = expanded ? '展开子任务' : '收起子任务';
+}
+
+async function modalAlert(message, title='提示') {
+  await showModal({
+    title,
+    bodyHtml: `<pre style="white-space:pre-wrap;margin:0">${escHtml(message)}</pre>`,
+    actions: [{ text: '确定', value: true }]
+  });
+}
+
+async function modalConfirm(message, title='确认') {
+  return await showModal({
+    title,
+    bodyHtml: `<pre style="white-space:pre-wrap;margin:0">${escHtml(message)}</pre>`,
+    actions: [
+      { text: '取消', value: false },
+      { text: '确定', value: true }
+    ]
+  });
+}
+
+async function modalPrompt({ title='输入', label='请输入', value='' }) {
+  const html = `<label class="muted">${escHtml(label)}</label><input id="modalInput" value="${escHtml(value)}" />`;
+  setTimeout(() => { const el = document.getElementById('modalInput'); if (el) el.focus(); }, 0);
+  const ok = await showModal({
+    title,
+    bodyHtml: html,
+    actions: [
+      { text: '取消', value: null },
+      { text: '确定', value: 'ok' }
+    ]
+  });
+  if (ok !== 'ok') return null;
+  const el = document.getElementById('modalInput');
+  return el ? el.value : '';
+}
+
+async function modalSelect({ title='选择', label='请选择', value='', options=[] }) {
+  const opts = (options || []).map(o => `<option value="${escHtml(o)}" ${o === value ? 'selected' : ''}>${escHtml(o)}</option>`).join('');
+  const html = `<label class="muted">${escHtml(label)}</label><select id="modalSelect">${opts}</select>`;
+  const ok = await showModal({
+    title,
+    bodyHtml: html,
+    actions: [
+      { text: '取消', value: null },
+      { text: '确定', value: 'ok' }
+    ]
+  });
+  if (ok !== 'ok') return null;
+  const el = document.getElementById('modalSelect');
+  return el ? el.value : '';
+}
+
+function showSection(name) {
+  sectionTasks.classList.add('hidden');
+  sectionHistory.classList.add('hidden');
+  sectionDashboard.classList.add('hidden');
+  sectionPersonal.classList.add('hidden');
+  sectionCreate.classList.add('hidden');
+  sectionAdmin.classList.add('hidden');
+  menuTasks.classList.remove('active');
+  menuHistory.classList.remove('active');
+  menuDashboard.classList.remove('active');
+  menuPersonal.classList.remove('active');
+  menuCreate.classList.remove('active');
+  menuAdmin.classList.remove('active');
+
+  if (name === 'tasks') { sectionTasks.classList.remove('hidden'); menuTasks.classList.add('active'); loadTasks(); }
+  if (name === 'history') { sectionHistory.classList.remove('hidden'); menuHistory.classList.add('active'); loadHistory(); }
+  if (name === 'dashboard') { sectionDashboard.classList.remove('hidden'); menuDashboard.classList.add('active'); if (!dashFrom.value && !dashTo.value) onDashboardRangeChange(); loadDashboard(); }
+  if (name === 'personal') { sectionPersonal.classList.remove('hidden'); menuPersonal.classList.add('active'); if (!pdashFrom.value && !pdashTo.value) onPersonalRangeChange(); loadPersonalDashboard(); }
+  if (name === 'create') {
+    sectionCreate.classList.remove('hidden');
+    menuCreate.classList.add('active');
+  }
+  if (name === 'admin') { sectionAdmin.classList.remove('hidden'); menuAdmin.classList.add('active'); }
+}
+
+async function request(url, method='GET', body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['X-Auth-Token'] = token;
+  const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json();
+  if (r.status === 401) {
+    localStorage.removeItem('task_token');
+    token = '';
+    loginCard.classList.remove('hidden');
+    app.classList.add('hidden');
+    loginResult.textContent = '登录已过期，请重新登录';
+    throw new Error('unauthorized');
+  }
+  return j;
+}
+
+async function login() {
+  const ret = await request('/auth/login', 'POST', { username: loginUser.value.trim(), password: loginPass.value });
+  if (!ret.ok) return loginResult.textContent = ret.error || '登录失败';
+  token = ret.token;
+  localStorage.setItem('task_token', token);
+  await initMe();
+}
+
+async function logout() {
+  try { await request('/auth/logout', 'POST', {}); } catch {}
+  localStorage.removeItem('task_token');
+  token = '';
+  location.reload();
+}
+
+async function forceChangePasswordFlow() {
+  while (true) {
+    const bodyHtml = `
+      <label class="muted">旧密码</label><input id="cp_old" type="password" />
+      <label class="muted">新密码（至少8位）</label><input id="cp_new" type="password" />
+      <label class="muted">确认新密码</label><input id="cp_new2" type="password" />
+    `;
+    const ok = await showModal({ title: '首次登录请修改密码', bodyHtml, actions: [{ text: '提交', value: 'ok' }] });
+    if (ok !== 'ok') continue;
+    const oldPassword = (document.getElementById('cp_old')?.value || '').trim();
+    const newPassword = (document.getElementById('cp_new')?.value || '').trim();
+    const newPassword2 = (document.getElementById('cp_new2')?.value || '').trim();
+    if (!oldPassword || !newPassword) {
+      await modalAlert('请填写完整密码信息');
+      continue;
+    }
+    if (newPassword.length < 8) {
+      await modalAlert('新密码至少8位');
+      continue;
+    }
+    if (newPassword !== newPassword2) {
+      await modalAlert('两次新密码不一致');
+      continue;
+    }
+    const ret = await request('/auth/change-password', 'POST', { oldPassword, newPassword });
+    if (!ret?.ok) {
+      await modalAlert(ret?.error || '修改密码失败');
+      continue;
+    }
+    await modalAlert('密码修改成功');
+    return;
+  }
+}
+
+async function initMe() {
+  const ret = await request('/auth/me');
+  if (!ret.username) return;
+  currentUser = ret;
+  loginCard.classList.add('hidden');
+  app.classList.remove('hidden');
+  me.innerText = `用户: ${ret.name || ret.username}(${ret.username}) | 角色: ${ret.role} | 绑定TG: ${ret.tgUsername || '-'} `;
+
+  if (ret.mustChangePassword) {
+    await forceChangePasswordFlow();
+    const meRet = await request('/auth/me');
+    currentUser = meRet;
+  }
+
+  await ensureAccountsLoaded();
+  applyAccountDatalist(document.getElementById('requester'));
+  applyAccountDatalist(document.getElementById('ccList'));
+  bindMentionSuggest(document.getElementById('requester'));
+  bindMentionSuggest(document.getElementById('ccList'));
+  bindTimePicker(document.getElementById('startTime'));
+  bindTimePicker(document.getElementById('endTime'));
+  bindDatePicker(document.getElementById('dashFrom'));
+  bindDatePicker(document.getElementById('dashTo'));
+  bindDatePicker(document.getElementById('pdashFrom'));
+  bindDatePicker(document.getElementById('pdashTo'));
+
+  menuCreate.classList.remove('hidden');
+
+  if (isAdminRole(ret.role)) {
+    menuAdmin.classList.remove('hidden');
+    loadAccounts();
+  }
+
+  const stEl = document.getElementById('startTime');
+  const etEl = document.getElementById('endTime');
+  const cyEl = document.getElementById('cycleDisplay');
+  const recomputeMainCycle = () => {
+    if (!stEl || !etEl || !cyEl) return;
+    const s = Date.parse((stEl.value || '').trim().replace(' ', 'T'));
+    const e = Date.parse((etEl.value || '').trim().replace(' ', 'T'));
+    if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) { cyEl.value = ''; return; }
+    const ms = e - s;
+    const d = Math.floor(ms / 86400000);
+    const h = Math.floor((ms % 86400000) / 3600000);
+    cyEl.value = `${d}天${h}小时`;
+  };
+  stEl?.addEventListener('input', recomputeMainCycle);
+  etEl?.addEventListener('input', recomputeMainCycle);
+
+  onDashboardRangeChange();
+  showSection('tasks');
+  loadTasks();
+}
+
+async function accountFormModal({ title, mode = 'create', initial = {} }) {
+  const html = `
+    <div class="row">
+      <div><label class="muted">用户名</label><input id="af_username" value="${escHtml(initial.username || '')}" ${mode === 'edit' ? 'disabled' : ''} /></div>
+      <div><label class="muted">名称</label><input id="af_name" value="${escHtml(initial.name || '')}" /></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">绑定TG</label><input id="af_tg" value="${escHtml(initial.tgUsername || '')}" placeholder="@username" /></div>
+      <div><label class="muted">密码${mode === 'edit' ? '（留空不修改）' : ''}</label><input id="af_password" type="password" value="" /></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">角色</label><select id="af_role"><option value="member">member</option><option value="admin">admin</option><option value="superadmin">superadmin</option></select></div>
+      <div><label class="muted">职位</label><select id="af_position"><option value="产品">产品</option><option value="前端">前端</option><option value="后端">后端</option><option value="安卓">安卓</option><option value="iOS">iOS</option><option value="运维">运维</option><option value="运营">运营</option><option value="QA">QA</option></select></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">状态</label><select id="af_enabled"><option value="1">启用</option><option value="0">禁用</option></select></div>
+      <div></div>
+    </div>
+  `;
+  const modalPromise = showModal({ title, bodyHtml: html, actions: [{ text: '取消', value: null }, { text: '保存', value: 'ok' }] });
+  setTimeout(() => {
+    const roleEl = document.getElementById('af_role');
+    const posEl = document.getElementById('af_position');
+    const enEl = document.getElementById('af_enabled');
+    if (roleEl) roleEl.value = initial.role || 'member';
+    if (posEl) posEl.value = initial.position || '产品';
+    if (enEl) enEl.value = initial.enabled === false ? '0' : '1';
+  }, 0);
+  const ok = await modalPromise;
+  if (ok !== 'ok') return null;
+  const v = id => document.getElementById(id)?.value || '';
+  return {
+    username: v('af_username').trim(),
+    name: v('af_name').trim(),
+    tgUsername: v('af_tg').trim() || null,
+    password: v('af_password'),
+    role: v('af_role') || 'member',
+    position: v('af_position') || '产品',
+    enabled: v('af_enabled') === '1'
+  };
+}
+
+async function createAccount() {
+  const form = await accountFormModal({ title: '新增账号', mode: 'create', initial: { role: 'member', position: '产品', enabled: true } });
+  if (!form) return;
+  if (!form.username || !form.password) return modalAlert('用户名和密码不能为空');
+  const ret = await request('/admin/accounts', 'POST', form);
+  await modalAlert(JSON.stringify(ret));
+  loadAccounts();
+}
+
+async function patchAccount(username, currentName = '', currentTg = '', currentRole = 'member', currentPosition = '产品', currentEnabled = true) {
+  const form = await accountFormModal({
+    title: `编辑账号：${username}`,
+    mode: 'edit',
+    initial: { username, name: currentName || username, tgUsername: currentTg || '', role: currentRole || 'member', position: currentPosition || '产品', enabled: !!currentEnabled }
+  });
+  if (!form) return;
+  const ret = await request(`/admin/accounts/${encodeURIComponent(username)}`, 'PATCH', {
+    name: form.name || username,
+    tgUsername: form.tgUsername,
+    role: form.role,
+    position: form.position,
+    password: form.password,
+    enabled: form.enabled
+  });
+  await modalAlert(JSON.stringify(ret));
+  loadAccounts();
+}
+
+async function loadAccounts() {
+  const ret = await request('/admin/accounts');
+  const box = document.getElementById('accounts');
+  if (!Array.isArray(ret)) return box.innerHTML = '<div class="muted">加载失败</div>';
+  accountCache = ret;
+  applyAccountDatalist(document.getElementById('requester'));
+  applyAccountDatalist(document.getElementById('ccList'));
+  box.innerHTML = `<table><thead><tr><th>用户名</th><th>名称</th><th>职位</th><th>绑定TG</th><th>角色</th><th>状态</th><th>操作</th></tr></thead><tbody>${ret.map(a => `<tr><td>${a.username}</td><td>${a.name || a.username}</td><td>${a.position || '产品'}</td><td>${a.tgUsername || '-'}</td><td>${a.role}</td><td>${a.enabled ? '启用' : '禁用'}</td><td><button onclick="patchAccount('${(a.username || '').replace(/'/g, "&#39;")}','${(a.name || a.username || '').replace(/'/g, "&#39;")}','${(a.tgUsername || '').replace(/'/g, "&#39;")}','${(a.role || 'member').replace(/'/g, "&#39;")}','${(a.position || '产品').replace(/'/g, "&#39;")}',${a.enabled ? 'true' : 'false'})">编辑/重置</button></td></tr>`).join('')}</tbody></table>`;
+}
+
+async function submitCreateTask(body) {
+  const ret = await request('/tasks', 'POST', body);
+  createResult.textContent = JSON.stringify(ret);
+  if (ret.ok) { showSection('tasks'); loadTasks(); }
+  return ret;
+}
+
+async function createTask() {
+  if (creatingTask) return;
+  creatingTask = true;
+  if (createTaskBtn) { createTaskBtn.disabled = true; createTaskBtn.textContent = '创建中...'; }
+  try {
+    const body = {
+      name: (document.getElementById('name')?.value || '').trim(),
+      docLink: (document.getElementById('docLink')?.value || '').trim(),
+      requester: (document.getElementById('requester')?.value || '').trim() || (currentUser?.tgUsername || currentUser?.username || ''),
+      startTime: (document.getElementById('startTime')?.value || '').trim(),
+      endTime: (document.getElementById('endTime')?.value || '').trim(),
+      project: (document.getElementById('project')?.value || '').trim() || '18game',
+      taskType: (document.getElementById('taskType')?.value || '').trim() || '新需求',
+      priority: (document.getElementById('priority')?.value || '').trim() || 'P2',
+      ccList: (document.getElementById('ccList')?.value || '').trim() || undefined,
+      note: (document.getElementById('note')?.value || '').trim() || undefined
+    };
+    if (!body.name || !body.requester || !body.startTime || !body.endTime) {
+      await modalAlert('请填写完整：任务名称、提出人、开始时间、结束时间');
+      return;
+    }
+    await submitCreateTask(body);
+  } finally {
+    creatingTask = false;
+    if (createTaskBtn) { createTaskBtn.disabled = false; createTaskBtn.textContent = '创建主任务'; }
+  }
+}
+
+async function openCreateTaskModal() {
+  const bodyHtml = `
+    <div class="row">
+      <div><label class="muted">任务名称</label><input id="m_name" placeholder="请输入任务名称" /></div>
+      <div><label class="muted">文档链接（选填）</label><input id="m_docLink" placeholder="https://..." /></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">提出人</label><input id="m_requester" value="${escHtml((currentUser?.tgUsername || currentUser?.username || ''))}" /></div>
+      <div><label class="muted">项目</label><input id="m_project" value="${escHtml(project.value || '18game')}" /></div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="muted">任务类型</label>
+        <select id="m_taskType">
+          <option value="新需求">新需求</option>
+          <option value="bug修复">bug修复</option>
+          <option value="优化">优化</option>
+        </select>
+      </div>
+      <div><label class="muted">抄送（可选，逗号分隔）</label><input id="m_ccList" placeholder="@alice,@bob" /></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">开始时间</label><input id="m_startTime" placeholder="2026-03-30 10:00" /></div>
+      <div><label class="muted">结束时间</label><input id="m_endTime" placeholder="2026-03-31 18:00" /></div>
+    </div>
+    <div><label class="muted">备注（可选）</label><textarea id="m_note" placeholder="可选"></textarea></div>
+  `;
+
+  const modalPromise = showModal({
+    title: '创建主任务',
+    bodyHtml,
+    actions: [
+      { text: '取消', value: false },
+      { text: '创建', value: true }
+    ]
+  });
+
+  await ensureAccountsLoaded();
+  applyAccountDatalist(document.getElementById('m_requester'));
+  applyAccountDatalist(document.getElementById('m_ccList'));
+  bindMentionSuggest(document.getElementById('m_requester'));
+  bindMentionSuggest(document.getElementById('m_ccList'));
+  bindTimePicker(document.getElementById('m_startTime'));
+  bindTimePicker(document.getElementById('m_endTime'));
+
+  const ok = await modalPromise;
+  if (!ok) return;
+
+  const payload = {
+    name: (document.getElementById('m_name')?.value || '').trim(),
+    docLink: (document.getElementById('m_docLink')?.value || '').trim(),
+    requester: (document.getElementById('m_requester')?.value || '').trim() || (currentUser?.tgUsername || currentUser?.username || ''),
+    startTime: (document.getElementById('m_startTime')?.value || '').trim(),
+    endTime: (document.getElementById('m_endTime')?.value || '').trim(),
+    project: (document.getElementById('m_project')?.value || '').trim() || '18game',
+    taskType: (document.getElementById('m_taskType')?.value || '').trim() || '新需求',
+    ccList: (document.getElementById('m_ccList')?.value || '').trim() || undefined,
+    note: (document.getElementById('m_note')?.value || '').trim() || undefined
+  };
+
+  if (!payload.name || !payload.requester || !payload.startTime || !payload.endTime) {
+    return modalAlert('请填写完整：任务名称、提出人、开始时间、结束时间');
+  }
+
+  const ret = await submitCreateTask(payload);
+  await modalAlert(JSON.stringify(ret, null, 2), ret.ok ? '创建成功' : '创建失败');
+}
+
+async function exportTaskTemplates() {
+  const pick = await modalSelect({
+    title: '选择导出模板',
+    label: '请选择要导出的模板',
+    value: 'task',
+    options: ['task', 'subtask', 'both']
+  });
+  if (!pick) return;
+
+  const ret = await request('/tasks/export-template');
+  if (!ret?.ok || !ret?.files) return modalAlert(ret?.error || '导出模板失败');
+
+  const targets = pick === 'both'
+    ? [ret.files.task, ret.files.subtask]
+    : [pick === 'task' ? ret.files.task : ret.files.subtask];
+
+  for (const href of targets.filter(Boolean)) {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  modalAlert(pick === 'both' ? '模板已开始下载：task.csv、subtask.csv' : `模板已开始下载：${pick}.csv`);
+}
+
+function parseCsvClient(text = '') {
+  const s = String(text || '').replace(/^\ufeff/, '');
+  const rows = [];
+  let cur = ''; let row = []; let inQuote = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i], nx = s[i + 1];
+    if (inQuote) {
+      if (ch === '"' && nx === '"') { cur += '"'; i += 1; continue; }
+      if (ch === '"') { inQuote = false; continue; }
+      cur += ch; continue;
+    }
+    if (ch === '"') { inQuote = true; continue; }
+    if (ch === ',') { row.push(cur); cur = ''; continue; }
+    if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; continue; }
+    if (ch === '\r') continue;
+    cur += ch;
+  }
+  if (cur.length || row.length) { row.push(cur); rows.push(row); }
+  if (!rows.length) return [];
+  const headers = rows[0].map(h => String(h || '').trim());
+  return rows.slice(1).filter(r => r.some(c => String(c || '').trim())).map(r => {
+    const o = {};
+    headers.forEach((h, idx) => { o[h] = String(r[idx] || '').trim(); });
+    return o;
+  });
+}
+
+async function openBatchImportModal() {
+  const bodyHtml = `
+    <div class="muted">请上传模板导出的 CSV 文件；支持 task.csv / subtask.csv（也接受 task.xlsx / subtask.xlsx 命名校验）。</div>
+    <div class="row">
+      <div><label class="muted">主任务文件</label><input id="imp_task_file" type="file" accept=".csv,.xlsx" /></div>
+      <div><label class="muted">子任务文件（可选）</label><input id="imp_subtask_file" type="file" accept=".csv,.xlsx" /></div>
+    </div>
+  `;
+  const ok = await showModal({ title: '批量导入任务', bodyHtml, actions: [{ text: '取消', value: null }, { text: '开始导入', value: 'ok' }] });
+  if (ok !== 'ok') return;
+
+  const tf = document.getElementById('imp_task_file')?.files?.[0];
+  const sf = document.getElementById('imp_subtask_file')?.files?.[0];
+  if (!tf && !sf) return modalAlert('请至少选择一个导入文件（主任务或子任务）');
+
+  const taskCsv = tf ? await tf.text() : '';
+  const subtaskCsv = sf ? await sf.text() : '';
+  const payload = {
+    taskFilename: tf?.name || '',
+    subtaskFilename: sf?.name || '',
+    tasks: taskCsv ? parseCsvClient(taskCsv) : [],
+    subtasks: subtaskCsv ? parseCsvClient(subtaskCsv) : []
+  };
+  const ret = await request('/tasks/import-batch', 'POST', payload);
+  await modalAlert(JSON.stringify(ret, null, 2), ret?.ok ? '导入成功' : '导入失败');
+  if (ret?.ok) {
+    loadTasks();
+    loadHistory();
+  }
+}
+
+async function exportAllTasks() {
+  const projectVal = (project?.value || dashProject?.value || '18game').trim() || '18game';
+  const ret = await request(`/tasks/export-all?project=${encodeURIComponent(projectVal)}`);
+  if (!ret?.ok || !ret?.files) {
+    return modalAlert(ret?.error || '导出失败');
+  }
+  const links = [ret.files.task, ret.files.subtask].filter(Boolean);
+  for (const href of links) {
+    const a = document.createElement('a');
+    a.href = href;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  modalAlert('导出完成：task.csv 与 subtask.csv 已开始下载');
+}
+
+async function loadTasks() {
+  const projectVal = project.value || '18game';
+  const creator = (document.getElementById('filterCreator')?.value || '').trim();
+  const requester = (document.getElementById('filterRequester')?.value || '').trim();
+  const subtaskAssignee = (document.getElementById('filterSubtaskAssignee')?.value || '').trim();
+  const taskName = (document.getElementById('filterTaskName')?.value || '').trim();
+  const subtaskName = (document.getElementById('filterSubtaskName')?.value || '').trim();
+  const watcher = (currentUser?.tgUsername || currentUser?.username || '').trim();
+  const qs = new URLSearchParams({ project: projectVal, status: '处理中' });
+  if (!isAdminRole(currentUser?.role) && watcher && !creator && !requester && !subtaskAssignee && !taskName && !subtaskName) qs.set('watcher', watcher);
+  if (creator) qs.set('creator', creator);
+  if (requester) qs.set('requester', requester);
+  if (subtaskAssignee) qs.set('subtaskAssignee', subtaskAssignee);
+  if (taskName) qs.set('taskName', taskName);
+  if (subtaskName) qs.set('subtaskName', subtaskName);
+
+  const ret = await request(`/tasks?${qs.toString()}`);
+  const box = document.getElementById('tasks');
+
+  if (!ret || ret.length === 0) {
+    box.innerHTML = '<div class="muted">暂无进行中任务</div>';
+    return;
+  }
+
+  box.innerHTML = '<div class="muted">加载任务中...</div>';
+  const cards = [];
+
+  for (const t of ret) {
+    const cc = (t.ccList || []).join(', ') || '-';
+    const doc = t.docLink ? `<a href="${t.docLink}" target="_blank">查看文档</a>` : '-';
+    const detail = await request(`/tasks/${t.taskNo}`);
+    const subtasks = Array.isArray(detail?.subtasks) ? detail.subtasks : [];
+    const remarks = Array.isArray(detail?.remarks) ? detail.remarks : [];
+    const remarkHtml = remarks.length
+      ? `<div style="margin:8px 0;"><b>备注记录（${remarks.length}）</b><div class="muted" style="margin-top:4px;line-height:1.6;">${remarks.map(r => `• [${fmtTime(r.createdAt)}] ${escHtml(r.author || '-')}：${escHtml(r.content || '')}`).join('<br>')}</div></div>`
+      : '<div class="muted" style="margin:8px 0;">备注记录：暂无</div>';
+
+    cards.push(`
+      <div class="task">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div><b>${escHtml(t.taskNo)}</b> ${escHtml(t.name || '-')}</div>
+          <div>
+            ${isAdminRole(currentUser?.role) ? `<button class="btn-sm" style="float:right;" onclick="deleteTaskConfirm('${t.taskNo}')">删除</button>` : ''}
+            <button class="btn-sm" onclick="editTaskPrompt('${t.taskNo}')">编辑任务</button>
+            <button class="btn-sm" onclick="completeTask('${t.taskNo}')">完成</button>
+            <button class="btn-sm" onclick="remarkPrompt('${t.taskNo}')">添加备注</button>
+            <button class="btn-sm" onclick="viewRemarks('${t.taskNo}')">备注历史</button>
+            <button class="btn-sm" onclick="createSubtaskPrompt('${t.taskNo}')">新增子任务</button>
+            <button class="btn-sm" onclick="forceCloseTaskPrompt('${t.taskNo}')">强制关闭</button>
+          </div>
+        </div>
+        <div class="muted" style="margin:6px 0 10px;">
+          文档: ${doc} ｜ 类型: ${escHtml(t.taskType || '新需求')} ｜ 优先级: ${escHtml(t.priority || 'P2')} ｜ 提出人: ${escHtml(t.requester || '-')} ｜ 创建人: ${escHtml(t.creator || '-')}
+          ｜ 抄送: ${escHtml(cc)} ｜ 预计上线: ${escHtml(t.expectedReleaseDate || '-')} ｜ 创建时间(UTC+8): ${fmtTime(t.createdAt)}<br>
+          主任务备注: ${escHtml(t.note || '-')}
+        </div>
+        ${remarkHtml}
+${renderSubtaskPanel(t.taskNo, subtasks, false)}
+      </div>
+    `);
+  }
+
+  box.innerHTML = cards.join('');
+}
+
+async function loadHistory() {
+  const projectVal = project.value || '18game';
+  const creator = (document.getElementById('filterCreatorHistory')?.value || '').trim();
+  const requester = (document.getElementById('filterRequesterHistory')?.value || '').trim();
+  const subtaskAssignee = (document.getElementById('filterSubtaskAssigneeHistory')?.value || '').trim();
+  const taskName = (document.getElementById('filterTaskNameHistory')?.value || '').trim();
+  const subtaskName = (document.getElementById('filterSubtaskNameHistory')?.value || '').trim();
+  const watcher = (currentUser?.tgUsername || currentUser?.username || '').trim();
+  const qs = isAdminRole(currentUser?.role)
+    ? new URLSearchParams({ project: projectVal, status: '已完成' })
+    : new URLSearchParams({ project: projectVal, view: 'history' });
+  if (!isAdminRole(currentUser?.role) && watcher && !creator && !requester && !subtaskAssignee && !taskName && !subtaskName) qs.set('watcher', watcher);
+  if (creator) qs.set('creator', creator);
+  if (requester) qs.set('requester', requester);
+  if (subtaskAssignee) qs.set('subtaskAssignee', subtaskAssignee);
+  if (taskName) qs.set('taskName', taskName);
+  if (subtaskName) qs.set('subtaskName', subtaskName);
+  const ret = await request(`/tasks?${qs.toString()}`);
+  const box = document.getElementById('historyTasks');
+
+  if (!ret || ret.length === 0) {
+    box.innerHTML = '<div class="muted">暂无历史任务</div>';
+    return;
+  }
+
+  box.innerHTML = '<div class="muted">加载任务中...</div>';
+  const cards = [];
+
+  for (const t of ret) {
+    const cc = (t.ccList || []).join(', ') || '-';
+    const detail = await request(`/tasks/${t.taskNo}`);
+    const subtasks = Array.isArray(detail?.subtasks) ? detail.subtasks : [];
+    const remarks = Array.isArray(detail?.remarks) ? detail.remarks : [];
+    const remarkHtml = remarks.length
+      ? `<div style="margin:8px 0;"><b>备注记录（${remarks.length}）</b><div class="muted" style="margin-top:4px;line-height:1.6;">${remarks.map(r => `• [${fmtTime(r.createdAt)}] ${escHtml(r.author || '-')}：${escHtml(r.content || '')}`).join('<br>')}</div></div>`
+      : '<div class="muted" style="margin:8px 0;">备注记录：暂无</div>';
+
+    cards.push(`
+      <div class="task">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div><b>${escHtml(t.taskNo)}</b> ${escHtml(t.name || '-')}</div>
+          <div>${isAdminRole(currentUser?.role) ? `<button class="btn-sm" style="float:right;" onclick="deleteTaskConfirm('${t.taskNo}')">删除</button>` : ''}</div>
+        </div>
+        <div class="muted" style="margin:6px 0 10px;">
+          类型: ${escHtml(t.taskType || '新需求')} ｜ 优先级: ${escHtml(t.priority || 'P2')} ｜ 提出人: ${escHtml(t.requester || '-')} ｜ 创建人: ${escHtml(t.creator || '-')} ｜ 抄送: ${escHtml(cc)}<br>
+          任务到期: ${fmtTime(t.dueAt)} ｜ 预计上线: ${escHtml(t.expectedReleaseDate || '-')}<br>
+          创建时间(UTC+8): ${fmtTime(t.createdAt)} ｜ 完成时间(UTC+8): ${fmtTime(t.completedAt)} ｜ ${t.isDelayed ? '延期' : '按时'}<br>
+          主任务备注: ${escHtml(t.note || '-')}
+        </div>
+        ${remarkHtml}
+${renderSubtaskPanel(t.taskNo, subtasks, false)}
+      </div>
+    `);
+  }
+
+  box.innerHTML = cards.join('');
+}
+
+function pct(v) {
+  return `${((Number(v) || 0) * 100).toFixed(1)}%`;
+}
+
+function num(v) {
+  return Number(v || 0).toLocaleString();
+}
+
+function renderMiniBar(v, maxV) {
+  const safeMax = maxV > 0 ? maxV : 1;
+  const w = Math.max(0, Math.min(100, (v / safeMax) * 100));
+  return `<div class="bar"><span style="width:${w}%"></span></div>`;
+}
+
+function ymdOffset(days = 0) {
+  const d = new Date(Date.now() + days * 86400000);
+  const y = d.getUTCFullYear();
+  const m = `${d.getUTCMonth() + 1}`.padStart(2, '0');
+  const dd = `${d.getUTCDate()}`.padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+function onDashboardRangeChange() {
+  const r = (dashRange?.value || 'month').trim();
+  if (r === 'all') {
+    dashFrom.value = '';
+    dashTo.value = '';
+    return;
+  }
+  dashTo.value = ymdOffset(0);
+  if (r === 'day') dashFrom.value = ymdOffset(-6);
+  else if (r === 'week') dashFrom.value = ymdOffset(-83);
+  else dashFrom.value = ymdOffset(-364);
+}
+
+function onPersonalRangeChange() {
+  const r = (pdashRange?.value || 'month').trim();
+  if (r === 'all') {
+    pdashFrom.value = '';
+    pdashTo.value = '';
+    return;
+  }
+  pdashTo.value = ymdOffset(0);
+  if (r === 'day') pdashFrom.value = ymdOffset(-6);
+  else if (r === 'week') pdashFrom.value = ymdOffset(-83);
+  else pdashFrom.value = ymdOffset(-364);
+}
+
+function renderColumnChart(items = [], { labelKey = 'label', aKey = 'a', bKey = 'b', aName = 'A', bName = 'B' } = {}) {
+  const maxV = Math.max(1, ...items.map(it => (Number(it[aKey] || 0) + Number(it[bKey] || 0))));
+  return `<div class="vchart">${items.map(it => {
+    const av = Number(it[aKey] || 0); const bv = Number(it[bKey] || 0);
+    const ah = Math.round((av / maxV) * 170); const bh = Math.round((bv / maxV) * 170);
+    const rawLabel = String(it[labelKey] || '');
+    const safeLabel = escHtml(rawLabel).replace(/\n/g, '<br>');
+    return `<div class="vbar-col"><div class="vbar-num">${num(av + bv)}</div><div class="vbar-stack"><div class="vbar-a" style="height:${ah}px" title="${aName}:${num(av)}"></div><div class="vbar-b" style="height:${bh}px" title="${bName}:${num(bv)}"></div></div><div class="vbar-label">${safeLabel}</div></div>`;
+  }).join('')}</div><div class="muted" style="margin-top:6px;">蓝色=${aName}，绿色=${bName}</div>`;
+}
+
+async function loadDashboard() {
+  const projectVal = (dashProject?.value || project?.value || '18game').trim() || '18game';
+  const from = (dashFrom?.value || '').trim();
+  const to = (dashTo?.value || '').trim();
+  const range = (dashRange?.value || 'month').trim() || 'month';
+  const granularity = range === 'all' ? 'month' : range;
+  const qs = new URLSearchParams({ project: projectVal, granularity });
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+
+  const ret = await request(`/reports/dashboard?${qs.toString()}`);
+  const box = document.getElementById('dashboardBox');
+  if (!ret || !ret.overview) {
+    box.innerHTML = '<div class="muted">面板数据加载失败</div>';
+    return;
+  }
+
+  const o = ret.overview;
+  const d = ret.distributions || {};
+  const trend = ret.subTrend || ret.trend || [];
+  const people = ret.peopleSubtask || ret.people || [];
+  const problems = ret.problemSubtasks || [];
+  const userPeriodStats = ret.userPeriodStats || [];
+  const positionStats = ret.positionStats || [];
+
+  const maxPeopleTask = Math.max(...people.map(p => (p.totalSubtasks ?? p.totalTasks) || 0), 1);
+  const maxProblems = Math.max(...problems.map(t => t.overdueHours || 0), 1);
+
+  const trendBars = renderColumnChart(
+    trend.slice(-14).map(t => ({ label: t.date, created: t.created, completed: t.completed })),
+    { labelKey: 'label', aKey: 'created', bKey: 'completed', aName: '新增子任务', bName: '完成子任务' }
+  );
+
+  const peopleRows = people.map(p => `<tr>
+    <td>${escHtml(p.person)}</td>
+    <td>${num(p.totalSubtasks ?? p.totalTasks)}${renderMiniBar((p.totalSubtasks ?? p.totalTasks), maxPeopleTask)}</td>
+    <td>${pct(p.subtaskCompletionRate ?? p.completionRate)}</td>
+    <td>${pct(p.subtaskOnTimeRate ?? p.onTimeRate)}</td>
+    <td>${num(p.avgSubtaskEfficiencyHours ?? p.avgEfficiencyHours)}</td>
+    <td>${num(p.currentWipSubtasks ?? p.currentWip)}</td>
+  </tr>`).join('');
+
+  const problemRows = problems.slice(0, 10).map(t => `<tr>
+    <td>#${escHtml(t.id)}</td>
+    <td>${escHtml(t.taskNo)}</td>
+    <td>${escHtml(t.title || '-')}</td>
+    <td>${escHtml(t.assignee || '-')}</td>
+    <td>${escHtml(t.status || '-')}</td>
+    <td>${num(t.overdueHours || 0)}${renderMiniBar((t.overdueHours || 0), maxProblems)}</td>
+    <td>${num(t.efficiencyHours || 0)}</td>
+  </tr>`).join('');
+
+  const userTrendByPosition = Object.entries(
+    userPeriodStats.reduce((acc, r) => {
+      const pos = (r.position || '产品').trim() || '产品';
+      if (!acc[pos]) acc[pos] = [];
+      acc[pos].push(r);
+      return acc;
+    }, {})
+  )
+    .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'));
+
+  const userBarsByPositionHtml = userTrendByPosition.length
+    ? userTrendByPosition.map(([pos, rows]) => {
+        const bars = renderColumnChart(
+          rows.slice(-24).map(r => ({ label: `${r.period}\n${r.person}`, inProgress: r.inProgress, completed: r.completed })),
+          { labelKey: 'label', aKey: 'inProgress', bKey: 'completed', aName: '进行中子任务', bName: '已完成子任务' }
+        );
+        return `<div style="margin-top:10px;"><h5 style="margin:0 0 6px;">${escHtml(pos)}</h5>${bars}</div>`;
+      }).join('')
+    : '<div class="muted">暂无数据</div>';
+
+  const maxPositionVal = Math.max(...positionStats.map(r => Math.max(Number(r.inProgress || 0), Number(r.completed || 0))), 1);
+  const positionBarsHtml = positionStats.map(r => {
+    const pos = escHtml(r.position || '-');
+    const inProgress = Number(r.inProgress || 0);
+    const completed = Number(r.completed || 0);
+    const ipW = Math.max(2, Math.round((inProgress / maxPositionVal) * 100));
+    const cpW = Math.max(2, Math.round((completed / maxPositionVal) * 100));
+    return `<div style="margin-bottom:10px;">
+      <div style="font-weight:600;margin-bottom:4px;">${pos}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+        <div style="width:92px;flex:0 0 92px;" class="muted">进行中任务</div>
+        <div style="flex:1;height:10px;background:#eef2ff;border-radius:999px;overflow:hidden;"><div style="height:100%;width:${ipW}%;background:#4f46e5;"></div></div>
+        <div style="width:44px;text-align:right;">${num(inProgress)}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin:2px 0;">
+        <div style="width:92px;flex:0 0 92px;" class="muted">已完成任务</div>
+        <div style="flex:1;height:10px;background:#ecfdf5;border-radius:999px;overflow:hidden;"><div style="height:100%;width:${cpW}%;background:#22c55e;"></div></div>
+        <div style="width:44px;text-align:right;">${num(completed)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi"><div class="muted">总任务数</div><div class="n">${num(o.totalTasks)}</div></div>
+      <div class="kpi"><div class="muted">已完成</div><div class="n">${num(o.completedTasks)}</div></div>
+      <div class="kpi"><div class="muted">进行中</div><div class="n">${num(o.inProgressTasks)}</div></div>
+      <div class="kpi"><div class="muted">完成率</div><div class="n">${pct(o.completionRate)}</div></div>
+      <div class="kpi"><div class="muted">准时率</div><div class="n">${pct(o.onTimeRate)}</div></div>
+      <div class="kpi"><div class="muted">平均完成时效(小时)</div><div class="n">${num(o.avgEfficiencyHours)}</div></div>
+      <div class="kpi"><div class="muted">平均子任务数/任务</div><div class="n">${num(o.avgSubtaskPerTask ?? 0)}</div></div>
+      <div class="kpi"><div class="muted">子任务完成率</div><div class="n">${pct(o.subtaskCompletionRate ?? 0)}</div></div>
+      <div class="kpi"><div class="muted">子任务准时率</div><div class="n">${pct(o.subtaskOnTimeRate ?? 0)}</div></div>
+      <div class="kpi"><div class="muted">子任务平均处理时效(小时)</div><div class="n">${num(o.avgSubtaskEfficiencyHours ?? 0)}</div></div>
+      <div class="kpi"><div class="muted">子任务总数</div><div class="n">${num(o.subtaskTotal ?? 0)}</div></div>
+      <div class="kpi"><div class="muted">子任务状态分布</div><div class="n">待处理:${num(d.subtaskStatusDistribution?.['待处理'] || 0)} / 待启动:${num(d.subtaskStatusDistribution?.['待启动'] || 0)} / 进行中:${num(d.subtaskStatusDistribution?.['进行中'] || 0)} / 已完成:${num(d.subtaskStatusDistribution?.['已完成'] || 0)} / 阻塞:${num(d.subtaskStatusDistribution?.['阻塞'] || 0)} / 已取消:${num(d.subtaskStatusDistribution?.['已取消'] || 0)}</div></div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <h4>按职位汇总统计（横版柱状图）</h4>
+      ${positionStats.length ? positionBarsHtml : '<div class="muted">暂无数据</div>'}
+    </div>
+
+    <div class="chart-row" style="margin-top:12px;">
+      <div>
+        <h4>子任务趋势柱状图（按${granularity === 'day' ? '天' : (granularity === 'week' ? '周' : '月')}汇总）</h4>
+        ${trend.length ? trendBars : '<div class="muted">暂无数据</div>'}
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <h4>用户子任务状态趋势图（按职位拆分）</h4>
+      ${userBarsByPositionHtml}
+    </div>
+
+    <div style="margin-top:12px;">
+      <h4>人员子任务效率排行（全部人员）</h4>
+      <table>
+        <thead><tr><th>人员</th><th>子任务数</th><th>完成率</th><th>准时率</th><th>平均时效(h)</th><th>在手子任务</th></tr></thead>
+        <tbody>${peopleRows || '<tr><td colspan="6" class="muted">暂无数据</td></tr>'}</tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:12px;">
+      <h4>问题子任务榜（按逾期小时）</h4>
+      <table>
+        <thead><tr><th>子任务ID</th><th>主任务</th><th>标题</th><th>负责人</th><th>状态</th><th>逾期(h)</th><th>处理时效(h)</th></tr></thead>
+        <tbody>${problemRows || '<tr><td colspan="7" class="muted">暂无数据</td></tr>'}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function isRelatedToMeTask(t, me) {
+  const meNorm = normUserClient(me);
+  if (!meNorm) return false;
+  const who = [t.creator, t.requester, t.executor, t.currentResponsible, ...(t.ccList || [])]
+    .map(normUserClient)
+    .filter(Boolean);
+  return who.includes(meNorm);
+}
+
+function isRelatedToMeSubtask(s, me) {
+  const meNorm = normUserClient(me);
+  if (!meNorm) return false;
+  const who = [s.assignee, s.createdBy, ...(s.watchers || [])]
+    .map(normUserClient)
+    .filter(Boolean);
+  return who.includes(meNorm);
+}
+
+async function loadPersonalDashboard() {
+  const me = (currentUser?.tgUsername || currentUser?.username || '').trim();
+  const box = document.getElementById('personalDashboardBox');
+  if (!me) {
+    box.innerHTML = '<div class="muted">未识别当前账号</div>';
+    return;
+  }
+
+  const projectVal = (pdashProject?.value || project?.value || '18game').trim() || '18game';
+  const from = (pdashFrom?.value || '').trim();
+  const to = (pdashTo?.value || '').trim();
+  const range = (pdashRange?.value || 'month').trim() || 'month';
+  const granularity = range === 'all' ? 'month' : range;
+  const qs = new URLSearchParams({ project: projectVal, granularity });
+  if (from) qs.set('from', from);
+  if (to) qs.set('to', to);
+
+  const ret = await request(`/reports/dashboard?${qs.toString()}`);
+  if (!ret || !ret.overview) {
+    box.innerHTML = '<div class="muted">个人面板数据加载失败</div>';
+    return;
+  }
+
+  const myTasks = (ret.tasks || []).filter(t => isRelatedToMeTask(t, me));
+  const myTaskNos = new Set(myTasks.map(t => t.taskNo));
+  const mySubtasks = (ret.subtasks || []).filter(s => isRelatedToMeSubtask(s, me) || myTaskNos.has(s.taskNo));
+
+  const completedTasks = myTasks.filter(t => t.status === '已完成').length;
+  const inProgressTasks = myTasks.filter(t => t.status !== '已完成').length;
+  const completedSubtasks = mySubtasks.filter(s => s.status === '已完成').length;
+  const inProgressSubtasks = mySubtasks.filter(s => s.status !== '已完成' && s.status !== '已取消').length;
+
+  const taskRows = myTasks.slice(0, 20).map(t => `<tr>
+    <td>${escHtml(t.taskNo || '-')}</td><td>${escHtml(t.name || '-')}</td><td>${escHtml(t.status || '-')}</td><td>${escHtml(t.currentResponsible || t.executor || '-')}</td><td>${fmtTime(t.expectedReleaseDate)}</td>
+  </tr>`).join('');
+
+  const subRows = mySubtasks.slice(0, 30).map(s => `<tr>
+    <td>${escHtml(s.taskNo || '-')}</td><td>#${escHtml(s.id || '-')}</td><td>${escHtml(s.title || '-')}</td><td>${escHtml(s.assignee || '-')}</td><td>${escHtml(s.status || '-')}</td><td>${fmtTime(s.receivedAt)}</td><td>${fmtTime(s.completedAt)}</td>
+  </tr>`).join('');
+
+  box.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi"><div class="muted">当前账号</div><div class="n">${escHtml(me)}</div></div>
+      <div class="kpi"><div class="muted">关联任务数</div><div class="n">${num(myTasks.length)}</div></div>
+      <div class="kpi"><div class="muted">任务已完成</div><div class="n">${num(completedTasks)}</div></div>
+      <div class="kpi"><div class="muted">任务未完成</div><div class="n">${num(inProgressTasks)}</div></div>
+      <div class="kpi"><div class="muted">关联子任务数</div><div class="n">${num(mySubtasks.length)}</div></div>
+      <div class="kpi"><div class="muted">子任务已完成</div><div class="n">${num(completedSubtasks)}</div></div>
+      <div class="kpi"><div class="muted">子任务未完成</div><div class="n">${num(inProgressSubtasks)}</div></div>
+    </div>
+    <div class="chart-row" style="margin-top:12px;">
+      <div>
+        <h4>我关联的任务（最多20条）</h4>
+        <table><thead><tr><th>任务ID</th><th>任务名称</th><th>状态</th><th>当前责任人</th><th>预计上线</th></tr></thead><tbody>${taskRows || '<tr><td colspan="5" class="muted">暂无数据</td></tr>'}</tbody></table>
+      </div>
+      <div>
+        <h4>我关联的子任务（最多30条）</h4>
+        <table><thead><tr><th>任务ID</th><th>子任务ID</th><th>子任务名称</th><th>处理人</th><th>状态</th><th>开始时间</th><th>完成时间</th></tr></thead><tbody>${subRows || '<tr><td colspan="7" class="muted">暂无数据</td></tr>'}</tbody></table>
+      </div>
+    </div>
+  `;
+}
+
+async function createSubtaskPrompt(taskNo) {
+  const html = `
+    <div class="row">
+      <div><label class="muted">子任务名称（必填）</label><input id="cst_title" placeholder="请输入子任务名称" /></div>
+      <div><label class="muted">处理人（必填，单人）</label><input id="cst_assignee" placeholder="@username" /></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">优先级</label><select id="cst_priority"><option value="P0">P0</option><option value="P1">P1</option><option value="P2" selected>P2</option><option value="P3">P3</option></select></div>
+      <div></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">是否校验前置依赖</label><select id="cst_depCheck"><option value="否" selected>否</option><option value="是">是</option></select></div>
+      <div><label class="muted">前置子任务ID（逗号分隔）</label><input id="cst_dependsOn" placeholder="如 12,15" /></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">开始时间（必填）</label><input id="cst_receivedAt" placeholder="选择开始时间" /></div>
+      <div><label class="muted">结束时间（必填）</label><input id="cst_dueAt" placeholder="选择结束时间" /></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">周期（自动计算）</label><input id="cst_expectedCycle" placeholder="自动计算" readonly style="background:#f7f7f7;cursor:not-allowed;" /></div>
+      <div><label class="muted">关注人/抄送（可选，逗号分隔）</label><input id="cst_watchers" placeholder="@u1,@u2" /></div>
+    </div>
+    <div><label class="muted">子任务描述（可选）</label><input id="cst_desc" placeholder="子任务描述（如：联调支付链路）" /></div>
+    <div><label class="muted">备注（可选）</label><input id="cst_note" placeholder="备注" /></div>
+    <div class="muted" style="margin-top:6px;white-space:pre-line;">命令模板：
+/task 新增子任务 #${taskNo} 标题=... 负责人=@xxx 周期=1天 开始时间=YYYY-MM-DDTHH:mm:ss 子任务描述=... 抄送=@a,@b 备注=... 校验=是|否 依赖=12,13</div>
+  `;
+  const modalPromise = showModal({
+    title: `新增子任务(${taskNo})`,
+    bodyHtml: html,
+    actions: [{ text: '取消', value: null }, { text: '创建', value: 'ok' }]
+  });
+
+  await ensureAccountsLoaded();
+  applyAccountDatalist(document.getElementById('cst_assignee'));
+  applyAccountDatalist(document.getElementById('cst_watchers'));
+  bindMentionSuggest(document.getElementById('cst_assignee'));
+  bindMentionSuggest(document.getElementById('cst_watchers'));
+  bindTimePicker(document.getElementById('cst_receivedAt'));
+
+  const recEl = document.getElementById('cst_receivedAt');
+  const cycleEl = document.getElementById('cst_expectedCycle');
+  const dueEl = document.getElementById('cst_dueAt');
+  bindTimePicker(dueEl);
+  const recomputeCycle = () => {
+    if (!recEl || !cycleEl || !dueEl) return;
+    const s = Date.parse((recEl.value || '').trim().replace(' ', 'T'));
+    const e = Date.parse((dueEl.value || '').trim().replace(' ', 'T'));
+    if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) { cycleEl.value = ''; return; }
+    const ms = e - s;
+    const d = Math.floor(ms / 86400000);
+    const h = Math.floor((ms % 86400000) / 3600000);
+    cycleEl.value = `${d}天${h}小时`;
+  };
+  recEl?.addEventListener('input', recomputeCycle);
+  dueEl?.addEventListener('input', recomputeCycle);
+
+  const ok = await modalPromise;
+  if (ok !== 'ok') return;
+
+  const title = (document.getElementById('cst_title')?.value || '').trim();
+  const assignee = (document.getElementById('cst_assignee')?.value || '').trim();
+  if (!title) return modalAlert('子任务名称不能为空');
+  if (!assignee) return modalAlert('处理人不能为空');
+
+  const dependsOn = (document.getElementById('cst_dependsOn')?.value || '')
+    .split(',').map(s => Number(String(s).trim())).filter(Boolean);
+  const needDependencyCheck = /^是$/i.test((document.getElementById('cst_depCheck')?.value || '').trim());
+  const receivedAt = (document.getElementById('cst_receivedAt')?.value || '').trim();
+  const dueAt = (document.getElementById('cst_dueAt')?.value || '').trim();
+  if (!receivedAt) return modalAlert('开始时间不能为空');
+  if (!dueAt) return modalAlert('结束时间不能为空');
+  const watchersRaw = (document.getElementById('cst_watchers')?.value || '').trim();
+  const watchers = watchersRaw ? watchersRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const body = {
+    title,
+    assignee,
+    description: (document.getElementById('cst_desc')?.value || '').trim() || undefined,
+    priority: (document.getElementById('cst_priority')?.value || 'P2').trim(),
+    needDependencyCheck,
+    dependsOn,
+    receivedAt,
+    dueAt,
+    watchers,
+    note: (document.getElementById('cst_note')?.value || '').trim() || undefined
+  };
+
+  const ret = await request(`/tasks/${taskNo}/subtasks`, 'POST', body);
+  await modalAlert(JSON.stringify(ret, null, 2), '新增子任务结果');
+  loadTasks();
+  loadHistory();
+}
+
+async function editSubtaskTimingPrompt(id, taskNo='') {
+  if (!isAdminRole(currentUser?.role)) return modalAlert('仅管理员可编辑子任务');
+  let s = null;
+  if (taskNo) {
+    const list = await request(`/tasks/${taskNo}/subtasks`);
+    if (Array.isArray(list)) s = list.find(x => Number(x.id) === Number(id)) || null;
+  }
+  if (!s) {
+    const one = await request(`/subtasks?activeOnly=0`);
+    if (Array.isArray(one)) s = one.find(x => Number(x.id) === Number(id)) || null;
+  }
+  if (!s) return modalAlert('子任务不存在');
+
+  const html = `
+    <div class="row">
+      <div><label class="muted">开始时间</label><input id="se_receivedAt" value="${escHtml(toDateTimeLocal(s.receivedAt || ''))}" /></div>
+      <div><label class="muted">完成时间</label><input id="se_completedAt" value="${escHtml(toDateTimeLocal(s.completedAt || ''))}" /></div>
+    </div>
+    <div class="row">
+      <div><label class="muted">周期（自动计算）</label><input id="se_cycle" value="" readonly style="background:#f7f7f7;cursor:not-allowed;" /></div>
+      <div></div>
+    </div>
+  `;
+
+  const modalPromise = showModal({
+    title: `编辑子任务 #${id}`,
+    bodyHtml: html,
+    actions: [{ text: '取消', value: null }, { text: '保存', value: 'ok' }]
+  });
+  const recEl = document.getElementById('se_receivedAt');
+  const doneEl = document.getElementById('se_completedAt');
+  const cycleEl = document.getElementById('se_cycle');
+  bindTimePicker(recEl);
+  bindTimePicker(doneEl);
+  const recomputeCycle = () => {
+    const sTs = Date.parse((recEl?.value || '').trim().replace(' ', 'T'));
+    const eTs = Date.parse((doneEl?.value || '').trim().replace(' ', 'T'));
+    if (!Number.isFinite(sTs) || !Number.isFinite(eTs) || eTs < sTs) {
+      if (cycleEl) cycleEl.value = '';
+      return;
+    }
+    const ms = eTs - sTs;
+    const d = Math.floor(ms / 86400000);
+    const h = Math.floor((ms % 86400000) / 3600000);
+    if (cycleEl) cycleEl.value = `${d}天${h}小时`;
+  };
+  recEl?.addEventListener('input', recomputeCycle);
+  doneEl?.addEventListener('input', recomputeCycle);
+  recomputeCycle();
+
+  const ok = await modalPromise;
+  if (ok !== 'ok') return;
+
+  const receivedAt = (recEl?.value || '').trim();
+  const completedAt = (doneEl?.value || '').trim();
+  if (!receivedAt) return modalAlert('开始时间不能为空');
+  if (!completedAt) return modalAlert('完成时间不能为空');
+
+  const patch = { receivedAt, completedAt };
+  const ret = await request(`/subtasks/${id}`, 'PATCH', patch);
+  await modalAlert(JSON.stringify(ret, null, 2), ret?.ok ? '保存成功' : '保存失败');
+  if (ret?.ok) {
+    loadTasks();
+    loadHistory();
+  }
+}
+
+async function operateSubtaskPrompt(id, taskNo='') {
+  let s = null;
+  if (taskNo) {
+    const list = await request(`/tasks/${taskNo}/subtasks`);
+    if (Array.isArray(list)) s = list.find(x => Number(x.id) === Number(id)) || null;
+  }
+  const html = `
+    <div class="row">
+      <div><label class="muted">处理动作</label><select id="st_action"><option value="start">start</option><option value="complete" selected>complete</option><option value="cancel">cancel</option></select></div>
+      <div><label class="muted">完成时间</label><input value="系统自动写入当前 UTC+8 时间" disabled style="background:#f7f7f7;cursor:not-allowed;" /></div>
+    </div>
+    <div><label class="muted">取消原因（仅 cancel 时生效）</label><input id="st_reason" value="" /></div>
+  `;
+  const modalPromise = showModal({
+    title: `处理子任务 #${id}${taskNo ? ` (${taskNo})` : ''}`,
+    bodyHtml: html,
+    actions: [{ text: '取消', value: null }, { text: '提交', value: 'ok' }]
+  });
+
+  const ok = await modalPromise;
+  if (ok !== 'ok') return;
+
+  const action = (document.getElementById('st_action')?.value || 'complete').trim().toLowerCase();
+  const reason = (document.getElementById('st_reason')?.value || '').trim();
+
+  let ret;
+  if (action === 'start') ret = await request(`/subtasks/${id}/start`, 'POST', {});
+  else if (action === 'complete') ret = await request(`/subtasks/${id}/complete`, 'POST', {});
+  else if (action === 'cancel') ret = await request(`/subtasks/${id}/cancel`, 'POST', { reason: reason || '' });
+  else return modalAlert('仅支持 start/complete/cancel');
+
+  await modalAlert(JSON.stringify(ret, null, 2), '子任务处理结果');
+  loadTasks();
+  loadHistory();
+}
+
+async function subtaskRemarkPrompt(id) {
+  const note = await modalPrompt({ title: `子任务 #${id} 添加备注`, label: '请输入备注内容', value: '' });
+  if (note === null) return;
+  if (!String(note).trim()) return modalAlert('备注不能为空');
+  const ret = await request(`/subtasks/${id}/remark`, 'POST', { note: String(note).trim() });
+  await modalAlert(JSON.stringify(ret, null, 2), ret.ok ? '备注成功' : '备注失败');
+  if (ret.ok) {
+    loadTasks();
+    loadHistory();
+  }
+}
+
+async function manageSubtaskPrompt(taskNo) {
+  const list = await request(`/tasks/${taskNo}/subtasks`);
+  if (!Array.isArray(list) || !list.length) return modalAlert('暂无子任务');
+  const pick = await modalPrompt({
+    title: `处理子任务(${taskNo})`,
+    label: `输入子任务ID\n可选：${list.map(s => `${s.id}:${s.title}[${s.status}]`).join(' | ')}`,
+    value: String(list[0].id)
+  });
+  if (pick === null) return;
+  const id = Number(pick);
+  if (!id) return modalAlert('子任务ID无效');
+  await operateSubtaskPrompt(id, taskNo);
+}
+
+async function deleteTaskConfirm(taskNo) {
+  if (!isAdminRole(currentUser?.role)) return modalAlert('仅管理员可删除主任务');
+  const ok = await modalConfirm(`确认删除主任务 ${taskNo}？\n该操作会同时删除其所有子任务，且不可恢复。`, '二次确认：删除主任务');
+  if (!ok) return;
+  const ret = await request(`/tasks/${taskNo}/delete`, 'POST', {});
+  await modalAlert(JSON.stringify(ret, null, 2), '删除主任务结果');
+  loadTasks();
+  loadHistory();
+}
+
+async function deleteSubtaskConfirm(id, taskNo = '') {
+  if (!isAdminRole(currentUser?.role)) return modalAlert('仅管理员可删除子任务');
+  const ok = await modalConfirm(`确认删除子任务 #${id}${taskNo ? `（主任务 ${taskNo}）` : ''}？\n该操作不可恢复。`, '二次确认：删除子任务');
+  if (!ok) return;
+  const ret = await request(`/subtasks/${id}/delete`, 'POST', {});
+  await modalAlert(JSON.stringify(ret, null, 2), '删除子任务结果');
+  loadTasks();
+  loadHistory();
+}
+
+async function forceCloseTaskPrompt(taskNo) {
+  const reason = await modalPrompt({ title: `强制关闭任务(${taskNo})`, label: '请输入强制关闭原因（必填）', value: '' });
+  if (reason === null) return;
+  if (!reason.trim()) return modalAlert('必须填写原因');
+  const ok = await modalConfirm(`确认强制关闭 ${taskNo}？\n原因：${reason}`);
+  if (!ok) return;
+  const ret = await request(`/tasks/${taskNo}/force-close`, 'POST', { reason: reason.trim() });
+  await modalAlert(JSON.stringify(ret, null, 2), '强制关闭结果');
+  loadTasks();
+  loadHistory();
+}
+
+async function editTaskPrompt(taskNo) {
+  const ret = await request(`/tasks/${taskNo}`);
+  if (!ret || !ret.task) return modalAlert('任务不存在或查询失败');
+  const t = ret.task;
+
+  const bodyHtml = `
+    <div class="row">
+      <div>
+        <label class="muted">任务名称</label>
+        <input id="edit_name" value="${escHtml(t.name || '')}" />
+      </div>
+      <div>
+        <label class="muted">文档链接（选填）</label>
+        <input id="edit_doc" value="${escHtml(t.docLink || '')}" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="muted">提出人</label>
+        <input id="edit_requester" value="${escHtml(t.requester || '')}" />
+      </div>
+      <div>
+        <label class="muted">项目</label>
+        <input id="edit_project" value="${escHtml(t.project || '18game')}" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="muted">开始时间（仅 superadmin 可改）</label>
+        <input id="edit_startAt" value="${escHtml(toDateTimeLocal(t.currentResponsibleReceivedAt || t.createdAt || ''))}" ${isSuperAdminRole(currentUser?.role) ? '' : 'disabled'} />
+      </div>
+      <div>
+        <label class="muted">结束时间（仅 superadmin 可改）</label>
+        <input id="edit_dueAt" value="${escHtml(toDateTimeLocal(t.dueAt || ''))}" ${isSuperAdminRole(currentUser?.role) ? '' : 'disabled'} />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="muted">周期（自动计算，不可编辑）</label>
+        <input value="${escHtml(t.completedCycle || '-')}" readonly style="background:#f7f7f7;cursor:not-allowed;" />
+      </div>
+      <div></div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="muted">任务类型</label>
+        <select id="edit_taskType">
+          <option value="新需求" ${(t.taskType || '新需求') === '新需求' ? 'selected' : ''}>新需求</option>
+          <option value="bug修复" ${(t.taskType || '') === 'bug修复' ? 'selected' : ''}>bug修复</option>
+          <option value="优化" ${(t.taskType || '') === '优化' ? 'selected' : ''}>优化</option>
+        </select>
+      </div>
+      <div>
+        <label class="muted">优先级（P0最紧急）</label>
+        <select id="edit_priority">
+          <option value="P0" ${(t.priority || '') === 'P0' ? 'selected' : ''}>P0</option>
+          <option value="P1" ${(t.priority || '') === 'P1' ? 'selected' : ''}>P1</option>
+          <option value="P2" ${(!t.priority || t.priority === 'P2') ? 'selected' : ''}>P2</option>
+          <option value="P3" ${(t.priority || '') === 'P3' ? 'selected' : ''}>P3</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label class="muted">抄送人（逗号分隔）</label>
+        <input id="edit_cc" value="${escHtml((t.ccList || []).join(','))}" />
+      </div>
+      <div></div>
+    </div>
+    <div>
+      <label class="muted">主任务备注</label>
+      <textarea id="edit_note" placeholder="可填写主任务备注">${escHtml(t.note || '')}</textarea>
+    </div>
+  `;
+
+  const modalPromise = showModal({
+    title: `编辑任务 ${taskNo}`,
+    bodyHtml,
+    actions: [
+      { text: '取消', value: false },
+      { text: '保存', value: true }
+    ]
+  });
+
+  await ensureAccountsLoaded();
+  applyAccountDatalist(document.getElementById('edit_requester'));
+  applyAccountDatalist(document.getElementById('edit_cc'));
+  bindMentionSuggest(document.getElementById('edit_requester'));
+  bindMentionSuggest(document.getElementById('edit_cc'));
+  bindTimePicker(document.getElementById('edit_startAt'));
+  bindTimePicker(document.getElementById('edit_dueAt'));
+
+  const ok = await modalPromise;
+  if (!ok) return;
+
+  const patch = {
+    name: (document.getElementById('edit_name')?.value || '').trim(),
+    docLink: (document.getElementById('edit_doc')?.value || '').trim(),
+    requester: (document.getElementById('edit_requester')?.value || '').trim(),
+    project: (document.getElementById('edit_project')?.value || '18game').trim(),
+    taskType: (document.getElementById('edit_taskType')?.value || '新需求').trim(),
+    priority: (document.getElementById('edit_priority')?.value || 'P2').trim(),
+    ccList: (document.getElementById('edit_cc')?.value || '').trim(),
+    note: (document.getElementById('edit_note')?.value || '').trim()
+  };
+
+  if (isSuperAdminRole(currentUser?.role)) {
+    patch.currentResponsibleReceivedAt = (document.getElementById('edit_startAt')?.value || '').trim() || undefined;
+    patch.dueAt = (document.getElementById('edit_dueAt')?.value || '').trim() || undefined;
+  }
+
+  const saveRet = await request(`/tasks/${taskNo}`, 'PATCH', patch);
+  await modalAlert(JSON.stringify(saveRet));
+  loadTasks();
+  loadHistory();
+}
+
+async function completeTask(taskNo) {
+  const noteInput = await modalPrompt({ title: '完成任务', label: '完成备注（可选）', value: '' });
+  if (noteInput === null) return;
+  const ret = await request(`/tasks/${taskNo}/advance`, 'POST', {
+    note: (noteInput || '').trim() || undefined
+  });
+  await modalAlert(JSON.stringify(ret));
+  loadTasks();
+  loadHistory();
+}
+
+async function remarkPrompt(taskNo) {
+  const content = await modalPrompt({ title: '添加备注', label: '请输入备注内容', value: '' });
+  if (content === null) return;
+  if (!content.trim()) return modalAlert('备注不能为空');
+  const ret = await request(`/tasks/${taskNo}/remarks`, 'POST', { content: content.trim() });
+  await modalAlert(JSON.stringify(ret));
+}
+
+async function viewRemarks(taskNo) {
+  const ret = await request(`/tasks/${taskNo}`);
+  if (!ret || !ret.remarks) return modalAlert('暂无备注历史');
+  const lines = ret.remarks.map(r => `- [${fmtTime(r.createdAt)}] ${r.author}: ${r.content}`);
+  await modalAlert(lines.length ? lines.join('\n') : '暂无备注历史', `任务 ${taskNo} 备注历史`);
+}
+
+if (token) initMe();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "task-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "18game task system (node builtin modules only)",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "bot": "node bot.js"
+  }
+}
