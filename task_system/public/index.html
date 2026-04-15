@@ -760,7 +760,19 @@ async function openCreateTaskModal() {
           <option value="优化">优化</option>
         </select>
       </div>
+      <div>
+        <label class="muted">优先级（P0最紧急）</label>
+        <select id="m_priority">
+          <option value="P0">P0</option>
+          <option value="P1">P1</option>
+          <option value="P2" selected>P2</option>
+          <option value="P3">P3</option>
+        </select>
+      </div>
+    </div>
+    <div class="row">
       <div><label class="muted">抄送（可选，逗号分隔）</label><input id="m_ccList" placeholder="@alice,@bob" /></div>
+      <div></div>
     </div>
     <div class="row">
       <div><label class="muted">开始时间</label><input id="m_startTime" placeholder="2026-03-30 10:00" /></div>
@@ -797,6 +809,7 @@ async function openCreateTaskModal() {
     endTime: (document.getElementById('m_endTime')?.value || '').trim(),
     project: (document.getElementById('m_project')?.value || '').trim() || '18game',
     taskType: (document.getElementById('m_taskType')?.value || '').trim() || '新需求',
+    priority: (document.getElementById('m_priority')?.value || '').trim() || 'P2',
     ccList: (document.getElementById('m_ccList')?.value || '').trim() || undefined,
     note: (document.getElementById('m_note')?.value || '').trim() || undefined
   };
