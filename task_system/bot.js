@@ -1,9 +1,11 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const TG_BOT_TOKEN = process.env.TG_TASK_BOT_TOKEN || process.env.TG_BOT_TOKEN;
 const API_BASE = process.env.TASK_API_BASE || 'http://127.0.0.1:8090';
 const PROJECT_DEFAULT = '18game';
+const UPLOADS_DIR = process.env.TASK_UPLOADS_DIR || '/root/.openclaw/workspace/task_system/uploads/subtasks';
 const STATE_PATH = process.env.TASK_BOT_STATE_PATH || '/root/.openclaw/task-system-bot-state.json';
 const DEFAULT_GROUP_ID = process.env.TASK_TG_GROUP_ID || '';
 const CONFIG_GROUP_IDS = (process.env.TASK_TG_GROUP_IDS || '')
@@ -19,6 +21,7 @@ const BOT_API = `https://api.telegram.org/bot${TG_BOT_TOKEN}`;
 const LOCK_PATH = process.env.TASK_BOT_LOCK_PATH || '/tmp/task-system-bot.lock';
 let lockFd = null;
 let offset = 0;
+const mediaGroupBuffers = new Map();
 
 function acquireSingletonLock() {
   try {
@@ -447,6 +450,98 @@ function fmtTime(v) {
   return String(v).replace('T', ' ');
 }
 
+function mimeToExt(mimeType = '') {
+  const m = String(mimeType || '').toLowerCase();
+  if (m.includes('png')) return '.png';
+  if (m.includes('webp')) return '.webp';
+  if (m.includes('gif')) return '.gif';
+  return '.jpg';
+}
+
+function bestPhotoFromMessage(m) {
+  if (!Array.isArray(m?.photo) || !m.photo.length) return null;
+  return m.photo[m.photo.length - 1];
+}
+
+function extractTelegramImageRefs(msg) {
+  const messages = Array.isArray(msg.mediaGroupMessages) && msg.mediaGroupMessages.length
+    ? msg.mediaGroupMessages
+    : [msg];
+  const refs = [];
+  for (const m of messages) {
+    const best = bestPhotoFromMessage(m);
+    if (best) {
+      refs.push({
+        type: 'photo',
+        fileId: best.file_id,
+        fileUniqueId: best.file_unique_id,
+        width: best.width,
+        height: best.height,
+        mimeType: 'image/jpeg'
+      });
+      continue;
+    }
+    if (m.document && String(m.document.mime_type || '').startsWith('image/')) {
+      refs.push({
+        type: 'image_document',
+        fileId: m.document.file_id,
+        fileUniqueId: m.document.file_unique_id,
+        fileName: m.document.file_name || '',
+        mimeType: m.document.mime_type || 'image/jpeg'
+      });
+    }
+  }
+  const seen = new Set();
+  return refs.filter(r => {
+    const key = r.fileUniqueId || r.fileId;
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function downloadTelegramImages(msg, actor = '@unknown') {
+  const refs = extractTelegramImageRefs(msg).slice(0, 3);
+  const attachments = [];
+  if (!refs.length) return attachments;
+  const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const dir = path.join(UPLOADS_DIR, day);
+  fs.mkdirSync(dir, { recursive: true });
+
+  for (const ref of refs) {
+    const fileRet = await tg('getFile', { file_id: ref.fileId });
+    if (!fileRet?.ok || !fileRet.result?.file_path) continue;
+    const tgPath = fileRet.result.file_path;
+    const ext = path.extname(tgPath) || mimeToExt(ref.mimeType);
+    const safeName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+    const abs = path.join(dir, safeName);
+    const url = `https://api.telegram.org/file/bot${TG_BOT_TOKEN}/${tgPath}`;
+    const r = await fetch(url);
+    if (!r.ok) continue;
+    const buf = Buffer.from(await r.arrayBuffer());
+    fs.writeFileSync(abs, buf);
+    attachments.push({
+      type: ref.type,
+      path: `/uploads/subtasks/${day}/${safeName}`,
+      url: `/uploads/subtasks/${day}/${safeName}`,
+      fileName: ref.fileName || safeName,
+      mimeType: ref.mimeType || r.headers.get('content-type') || 'image/jpeg',
+      size: buf.length,
+      width: ref.width || null,
+      height: ref.height || null,
+      telegramFileId: ref.fileId,
+      telegramFileUniqueId: ref.fileUniqueId,
+      addedBy: actor
+    });
+  }
+  return attachments;
+}
+
+function attachmentCountText(s) {
+  const n = Array.isArray(s?.attachments) ? s.attachments.length : 0;
+  return n ? ` | 图片:${n}张` : '';
+}
+
 function normalizeCreateText(text) {
   const knownKeys = [
     // 主任务
@@ -507,7 +602,7 @@ async function resolveTaskUser(tgUsername) {
 async function handleMessage(msg) {
   const chatId = Number(msg.chat.id);
   const chatType = String(msg.chat?.type || '');
-  let text = (msg.text || '').trim();
+  let text = (msg.text || msg.caption || '').trim();
   if (!text) return;
 
   const isGroupChat = chatType === 'group' || chatType === 'supergroup';
@@ -536,16 +631,17 @@ async function handleMessage(msg) {
       '1) /task 查看进行中',
       '2) /task 历史任务',
       '3) /task 完成任务 #18G-1001',
-      '4) /task 新增子任务 #18G-1001 标题=联调 负责人=@alice 开始时间=2026-03-30 16:30 结束时间=2026-03-31 18:00 子任务描述=联调范围 抄送=@bob 备注=可选 校验=是 依赖=12,13',
-      '5) /task 启动子任务 #12',
-      '6) /task 完成子任务 #12',
-      '7) /task 取消子任务 #12 原因=需求变更',
-      '8) /task 强制关闭 #18G-1001 原因=紧急上线',
-      '9) /task 添加备注 #18G-1001 这里是备注内容',
-      '10) /task 创建主任务 名称=... 类型=新需求|bug修复|优化 文档=https://... 提出人=@xxx 抄送=@a,@b 开始时间=2026-03-13 10:00 结束时间=2026-03-15 18:00 项目=18game',
-      '11) /task 任务详情 #18G-1001',
-      '12) /task 删除子任务 #12（仅管理员）',
-      '13) /task 删除主任务 #18G-1001（仅管理员）',
+      '4) /task 新增子任务 #18G-1001 标题=联调 负责人=@alice 开始时间=2026-03-30 16:30 结束时间=2026-03-31 18:00 子任务描述=联调范围 抄送=@bob 备注=可选 校验=是 依赖=12,13（可把命令写在图片说明中，最多3张）',
+      '5) /task 添加图片 #12（发送图片时在说明/caption填写，最多补到3张）',
+      '6) /task 启动子任务 #12',
+      '7) /task 完成子任务 #12',
+      '8) /task 取消子任务 #12 原因=需求变更',
+      '9) /task 强制关闭 #18G-1001 原因=紧急上线',
+      '10) /task 添加备注 #18G-1001 这里是备注内容',
+      '11) /task 创建主任务 名称=... 类型=新需求|bug修复|优化 部门=后端 文档=https://... 提出人=@xxx 抄送=@a,@b 开始时间=2026-03-13 10:00 结束时间=2026-03-15 18:00 项目=18game',
+      '12) /task 任务详情 #18G-1001',
+      '13) /task 删除子任务 #12（仅管理员）',
+      '14) /task 删除主任务 #18G-1001（仅管理员）',
       '',
       '说明：仅支持 /task 与 /help，其他指令一律无权限。'
     ].join('\n');
@@ -585,6 +681,7 @@ async function handleMessage(msg) {
       endTime: kv['结束时间'] || kv['endTime'],
       project: kv['项目'] || kv['project'] || PROJECT_DEFAULT,
       taskType: kv['类型'] || kv['taskType'] || '新需求',
+      department: kv['部门'] || kv['department'] || '后端',
       note: kv['备注'] || kv['note'] || undefined
     };
 
@@ -601,6 +698,7 @@ async function handleMessage(msg) {
         '@agentfriend_bot 创建主任务',
         '名称=联调测试',
         '类型=新需求（可选：新需求/bug修复/优化）',
+        '部门=后端（可选：产品/前端/后端/安卓/iOS/运维/运营/QA）',
         '文档=https://example.com',
         `提出人=${username}`,
         '抄送给=@alice,@bob（可多人，逗号分隔）',
@@ -619,10 +717,14 @@ async function handleMessage(msg) {
       await tg('sendMessage', { chat_id: chatId, text: '❌ 类型仅支持：新需求 / bug修复 / 优化', reply_to_message_id: msg.message_id });
       return;
     }
+    if (!['产品', '前端', '后端', '安卓', 'iOS', '运维', '运营', 'QA'].includes(payload.department)) {
+      await tg('sendMessage', { chat_id: chatId, text: '❌ 部门仅支持：产品 / 前端 / 后端 / 安卓 / iOS / 运维 / 运营 / QA', reply_to_message_id: msg.message_id });
+      return;
+    }
 
     const ret = await api('/tasks', 'POST', payload, actor);
     const txt = ret.ok
-      ? `✅ 主任务已创建 ${ret.taskNo}\n名称: ${payload.name}\n类型: ${payload.taskType}\n文档: ${payload.docLink}\n提出人: ${payload.requester}\n抄送人: ${payload.ccList || '-'}\n开始时间: ${fmtTime(payload.startTime)}\n结束时间: ${fmtTime(payload.endTime)}\n周期(自动): ${ret.completedCycle || '-'}\n项目: ${payload.project}\n\n👉 请分配子任务（示例）\n/task 新增子任务 #${ret.taskNo} 标题=联调 负责人=@alice 开始时间=2026-03-30 16:30 结束时间=2026-03-31 18:00 子任务描述=联调范围 抄送=@bob 备注=可选 校验=是 依赖=12,13`
+      ? `✅ 主任务已创建 ${ret.taskNo}\n名称: ${payload.name}\n类型: ${payload.taskType}\n部门: ${payload.department || '后端'}\n文档: ${payload.docLink}\n提出人: ${payload.requester}\n抄送人: ${payload.ccList || '-'}\n开始时间: ${fmtTime(payload.startTime)}\n结束时间: ${fmtTime(payload.endTime)}\n周期(自动): ${ret.completedCycle || '-'}\n项目: ${payload.project}\n\n👉 请分配子任务（示例）\n/task 新增子任务 #${ret.taskNo} 标题=联调 负责人=@alice 开始时间=2026-03-30 16:30 结束时间=2026-03-31 18:00 子任务描述=联调范围 抄送=@bob 备注=可选 校验=是 依赖=12,13`
       : `❌ 创建失败: ${ret.error || ret.detail || '参数不完整'}`;
     await tg('sendMessage', { chat_id: chatId, text: txt, reply_to_message_id: msg.message_id });
     return;
@@ -643,6 +745,8 @@ async function handleMessage(msg) {
     }
     const dependsOn = depRaw ? depRaw.split(/[，,\s]+/).map(x => Number(x)).filter(Boolean) : [];
     const watchers = (kv['关注人'] || kv['抄送'] || kv['watchers'] || kv['ccList'] || '').trim();
+    const imageRefs = extractTelegramImageRefs(msg);
+    const attachments = await downloadTelegramImages(msg, actor);
     const ret = await api(`/tasks/${m[1]}/subtasks`, 'POST', {
       title,
       assignee,
@@ -653,9 +757,26 @@ async function handleMessage(msg) {
       watchers: watchers ? watchers.split(/[，,\s]+/).filter(Boolean) : [],
       note: kv['备注'] || kv['note'] || '',
       needDependencyCheck: depCheck === '是',
-      dependsOn
+      dependsOn,
+      attachments
     }, actor);
-    const txt = ret.ok ? `✅ 已新增子任务 #${ret.subtask.id}\n任务: ${m[1]}\n标题: ${ret.subtask.title}\n负责人: ${ret.subtask.assignee}\n开始: ${fmtTime(ret.subtask.receivedAt)}\n结束: ${fmtTime(ret.subtask.dueAt)}\n周期(自动): ${ret.subtask.expectedCycle || '-'}\n状态(后台): ${ret.subtask.status}` : `❌ ${ret.error || ret.detail}`;
+    const imgNote = imageRefs.length ? `\n图片: 已保存${attachments.length}张${imageRefs.length > 3 ? '（最多3张，超出已忽略）' : ''}` : '';
+    const txt = ret.ok ? `✅ 已新增子任务 #${ret.subtask.id}\n任务: ${m[1]}\n标题: ${ret.subtask.title}\n负责人: ${ret.subtask.assignee}\n开始: ${fmtTime(ret.subtask.receivedAt)}\n结束: ${fmtTime(ret.subtask.dueAt)}\n周期(自动): ${ret.subtask.expectedCycle || '-'}\n状态(后台): ${ret.subtask.status}${imgNote}` : `❌ ${ret.error || ret.detail}`;
+    await tg('sendMessage', { chat_id: chatId, text: txt, reply_to_message_id: msg.message_id });
+    return;
+  }
+
+  if (text.includes('添加图片')) {
+    const m = text.match(/#(\d+)/);
+    if (!m) return tg('sendMessage', { chat_id: chatId, text: '请带子任务ID，如 #12；发送图片时在说明里写：/task 添加图片 #12', reply_to_message_id: msg.message_id });
+    const imageRefs = extractTelegramImageRefs(msg);
+    if (!imageRefs.length) return tg('sendMessage', { chat_id: chatId, text: '请把图片和 /task 添加图片 #子任务ID 放在同一条消息的图片说明/caption 中。', reply_to_message_id: msg.message_id });
+    const attachments = await downloadTelegramImages(msg, actor);
+    if (!attachments.length) return tg('sendMessage', { chat_id: chatId, text: '❌ 图片下载失败，请稍后重试', reply_to_message_id: msg.message_id });
+    const ret = await api(`/subtasks/${m[1]}/attachments`, 'POST', { attachments }, actor);
+    const txt = ret.ok
+      ? `✅ 已给子任务 #${m[1]} 添加图片 ${ret.addedCount || 0} 张${ret.ignoredCount ? `，忽略${ret.ignoredCount}张（最多3张）` : ''}`
+      : `❌ ${ret.error || ret.detail}`;
     await tg('sendMessage', { chat_id: chatId, text: txt, reply_to_message_id: msg.message_id });
     return;
   }
@@ -795,7 +916,7 @@ async function handleMessage(msg) {
               `标题: ${s.title || '-'}`,
               `状态: ${s.status || '-'}`,
               `开始: ${fmtTime(s.receivedAt)}`,
-              `到期: ${fmtTime(s.dueAt)}`
+              `到期: ${fmtTime(s.dueAt)}${attachmentCountText(s)}`
             ].join('\n')
           );
           lines.push('');
@@ -913,7 +1034,7 @@ async function handleMessage(msg) {
       lines.push('暂无子任务');
     } else {
       for (const s of subs.slice(0, 20)) {
-        lines.push(`#${s.id} ${s.title || '-'} | 负责人:${s.assignee || '-'} | 状态:${s.status || '-'} | 开始:${fmtTime(s.receivedAt)} | 完成:${fmtTime(s.completedAt)}`);
+        lines.push(`#${s.id} ${s.title || '-'} | 负责人:${s.assignee || '-'} | 状态:${s.status || '-'} | 开始:${fmtTime(s.receivedAt)} | 完成:${fmtTime(s.completedAt)}${attachmentCountText(s)}`);
       }
     }
 
@@ -973,13 +1094,37 @@ async function handleCallbackQuery(q) {
   }
 }
 
+async function handleMediaGroupMessage(msg) {
+  const key = `${msg.chat?.id || ''}:${msg.media_group_id}`;
+  let buf = mediaGroupBuffers.get(key);
+  if (!buf) {
+    buf = { messages: [], timer: null };
+    mediaGroupBuffers.set(key, buf);
+  }
+  buf.messages.push(msg);
+  if (buf.timer) clearTimeout(buf.timer);
+  buf.timer = setTimeout(async () => {
+    mediaGroupBuffers.delete(key);
+    try {
+      const captionMsg = buf.messages.find(m => (m.caption || m.text || '').trim()) || buf.messages[0];
+      const combined = { ...captionMsg, mediaGroupMessages: buf.messages };
+      await handleMessage(combined);
+    } catch (e) {
+      console.error('media group handling error:', e.message);
+    }
+  }, 1200);
+}
+
 async function loop() {
   try {
     const r = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] });
     if (r.ok) {
       for (const u of r.result) {
         offset = u.update_id + 1;
-        if (u.message) await handleMessage(u.message);
+        if (u.message) {
+          if (u.message.media_group_id) await handleMediaGroupMessage(u.message);
+          else await handleMessage(u.message);
+        }
         if (u.callback_query) await handleCallbackQuery(u.callback_query);
       }
     }

@@ -7,6 +7,7 @@ const { DatabaseSync } = require('node:sqlite');
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const EXPORTS_DIR = path.join(__dirname, 'exports');
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
 
 const PORT = process.env.PORT || 8090;
 const BIND_HOST = process.env.TASK_BIND_HOST || process.env.HOST || '127.0.0.1';
@@ -61,6 +62,90 @@ function parseTZDateToEpoch(v) {
 
 function randomId(prefix = '') {
   return prefix + crypto.randomBytes(12).toString('hex');
+}
+
+function normalizeAttachment(input = {}) {
+  const relPath = String(input.path || input.url || '').trim();
+  if (!relPath || !relPath.startsWith('/uploads/subtasks/')) return null;
+  if (relPath.includes('..') || relPath.includes('\\')) return null;
+  const type = String(input.type || 'image').trim() || 'image';
+  const mimeType = String(input.mimeType || input.mime_type || '').trim();
+  if (mimeType && !mimeType.startsWith('image/')) return null;
+  return {
+    id: input.id || randomId('att_'),
+    type,
+    url: relPath,
+    path: relPath,
+    fileName: String(input.fileName || input.file_name || path.basename(relPath)).trim(),
+    mimeType: mimeType || 'image/jpeg',
+    size: Number(input.size || 0) || null,
+    width: Number(input.width || 0) || null,
+    height: Number(input.height || 0) || null,
+    telegramFileId: input.telegramFileId || input.fileId || null,
+    telegramFileUniqueId: input.telegramFileUniqueId || input.fileUniqueId || null,
+    addedBy: input.addedBy || null,
+    addedAt: input.addedAt || dateInTZ()
+  };
+}
+
+function normalizeAttachments(input) {
+  const arr = Array.isArray(input) ? input : (input ? [input] : []);
+  return arr.map(normalizeAttachment).filter(Boolean).slice(0, 3);
+}
+
+
+function imageExtFromMime(mimeType = '') {
+  const m = String(mimeType || '').toLowerCase();
+  if (m === 'image/png') return '.png';
+  if (m === 'image/webp') return '.webp';
+  if (m === 'image/gif') return '.gif';
+  if (m === 'image/jpeg' || m === 'image/jpg') return '.jpg';
+  return '';
+}
+
+function safeImageBaseName(name = '') {
+  return String(name || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'image';
+}
+
+function saveUploadedImageFromBase64(file, actor = 'web') {
+  const mimeType = String(file?.mimeType || file?.type || '').toLowerCase();
+  const ext = imageExtFromMime(mimeType);
+  if (!ext) throw new Error('仅支持 jpg/png/webp/gif 图片');
+  let data = String(file?.data || file?.base64 || '');
+  data = data.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
+  if (!data) throw new Error('图片内容为空');
+  const buf = Buffer.from(data, 'base64');
+  if (!buf.length) throw new Error('图片内容无效');
+  if (buf.length > 8 * 1024 * 1024) throw new Error('单张图片不能超过8MB');
+  const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const dir = path.join(UPLOADS_DIR, 'subtasks', day);
+  fs.mkdirSync(dir, { recursive: true });
+  const base = safeImageBaseName(path.basename(String(file?.fileName || file?.name || 'image'), path.extname(String(file?.fileName || file?.name || ''))));
+  const finalName = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}-${base}${ext}`;
+  const abs = path.join(dir, finalName);
+  fs.writeFileSync(abs, buf);
+  return {
+    type: 'image_upload',
+    path: `/uploads/subtasks/${day}/${finalName}`,
+    url: `/uploads/subtasks/${day}/${finalName}`,
+    fileName: String(file?.fileName || file?.name || finalName).slice(0, 120),
+    mimeType,
+    size: buf.length,
+    addedBy: actor,
+    addedAt: dateInTZ()
+  };
+}
+
+function attachmentViewUrl(att, req) {
+  const urlPath = String(att?.url || att?.path || '');
+  if (!urlPath) return '';
+  const token = req?.headers?.['x-auth-token'] || '';
+  return token ? `${urlPath}?token=${encodeURIComponent(token)}` : urlPath;
+}
+
+function hydrateAttachmentUrls(item, req) {
+  const attachments = normalizeAttachments(item.attachments || []).map(a => ({ ...a, viewUrl: attachmentViewUrl(a, req) }));
+  return { ...item, attachments };
 }
 
 function hashPassword(plain) {
@@ -148,6 +233,11 @@ function ensureDefaults(db) {
   if (!db.seq) db.seq = 1000;
   if (!('lastReportDate' in db)) db.lastReportDate = null;
   if (!('subtasksMigrated' in db)) db.subtasksMigrated = false;
+  if (!db.weeklyReportSnapshots || typeof db.weeklyReportSnapshots !== 'object') db.weeklyReportSnapshots = {};
+  if (!db.weeklyReportPlanSnapshots || typeof db.weeklyReportPlanSnapshots !== 'object') db.weeklyReportPlanSnapshots = {};
+  if (!db.weeklyReportFinalSnapshots || typeof db.weeklyReportFinalSnapshots !== 'object') db.weeklyReportFinalSnapshots = {};
+  if (!db.weeklyReportSchedule || typeof db.weeklyReportSchedule !== 'object') db.weeklyReportSchedule = {};
+  if (!db.weeklyReportNotes || typeof db.weeklyReportNotes !== 'object') db.weeklyReportNotes = {};
 
   for (const a of db.accounts) {
     if (!a.name) a.name = a.username;
@@ -394,11 +484,34 @@ function normalizeDateTimeInput(v) {
   return Number.isFinite(parseTZDateToEpoch(normalized)) ? normalized : '';
 }
 
-function calcDurationDisplay(startAt, endAt) {
+function calcBusinessDurationMs(startAt, endAt) {
   const s = parseTZDateToEpoch(startAt);
   const e = parseTZDateToEpoch(endAt);
-  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return '';
-  const ms = e - s;
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return null;
+
+  let total = 0;
+  let cursor = new Date(s);
+  const end = new Date(e);
+
+  while (cursor.getTime() < e) {
+    const dayStart = new Date(cursor.getTime());
+    dayStart.setHours(0, 0, 0, 0);
+    const nextDay = new Date(dayStart.getTime());
+    nextDay.setDate(nextDay.getDate() + 1);
+    const segmentEnd = Math.min(nextDay.getTime(), e);
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) {
+      total += Math.max(0, segmentEnd - cursor.getTime());
+    }
+    cursor = new Date(segmentEnd);
+  }
+
+  return total;
+}
+
+function calcDurationDisplay(startAt, endAt) {
+  const ms = calcBusinessDurationMs(startAt, endAt);
+  if (ms === null) return '';
   const dayMs = 24 * 3600 * 1000;
   const hourMs = 3600 * 1000;
   const days = Math.floor(ms / dayMs);
@@ -406,6 +519,309 @@ function calcDurationDisplay(startAt, endAt) {
   return `${days}天${hours}小时`;
 }
 
+
+function accountForActor(db, actor) {
+  const raw = String(actor || '').trim();
+  if (!raw) return null;
+  const n = normUser(raw);
+  const byAccount = (db.accounts || []).find(a => normUser(a.username) === n || normUser(a.tgUsername) === n);
+  if (byAccount) return byAccount;
+  const lower = raw.toLowerCase();
+  return (db.accounts || []).find(a => String(a.name || '').trim().toLowerCase() === lower) || null;
+}
+
+function localDateFromYmd(ymd) {
+  return new Date(`${ymd}T00:00:00+08:00`);
+}
+
+function ymdFromLocalDate(d) {
+  return dateInTZ(d).slice(0, 10);
+}
+
+function addDaysDate(d, days) {
+  return new Date(d.getTime() + days * 86400000);
+}
+
+function monthNaturalWeeks(month) {
+  const m = String(month || '').trim();
+  const ok = /^\d{4}-\d{2}$/.test(m) ? m : beijingTodayDate().slice(0, 7);
+  const [year, monthNo] = ok.split('-').map(Number);
+  const first = localDateFromYmd(`${ok}-01`);
+  const nextYear = monthNo === 12 ? year + 1 : year;
+  const nextMonthNo = monthNo === 12 ? 1 : monthNo + 1;
+  const nextMonth = localDateFromYmd(`${nextYear}-${String(nextMonthNo).padStart(2, '0')}-01`);
+  const last = addDaysDate(nextMonth, -1);
+  const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const firstWeekday = weekdayMap[beijingWeekdayShort(first)];
+  const startDiff = firstWeekday === 0 ? -6 : 1 - firstWeekday;
+  let cursor = addDaysDate(first, startDiff);
+  const weeks = [];
+  while (cursor.getTime() <= last.getTime()) {
+    const end = addDaysDate(cursor, 6);
+    weeks.push({
+      key: `${ymdFromLocalDate(cursor)}~${ymdFromLocalDate(end)}`,
+      label: `${ymdFromLocalDate(cursor).slice(5).replace('-', '')} - ${ymdFromLocalDate(end).slice(5).replace('-', '')}`,
+      start: ymdFromLocalDate(cursor),
+      end: ymdFromLocalDate(end),
+      startTs: parseTZDateToEpoch(`${ymdFromLocalDate(cursor)}T00:00:00`),
+      endTs: parseTZDateToEpoch(`${ymdFromLocalDate(end)}T23:59:59`)
+    });
+    cursor = addDaysDate(cursor, 7);
+  }
+  return { month: ok, weeks };
+}
+
+function buildWeeklyReportStats(db, { project = '18game', month = '', department = '', assignee = '', persistSnapshot = false, snapshotKind = 'manual' } = {}) {
+  const { month: normalizedMonth, weeks } = monthNaturalWeeks(month);
+  const taskMap = new Map((db.tasks || []).filter(t => !project || t.project === project).map(t => [t.taskNo, t]));
+  const assigneeNorm = normUser(assignee);
+  const activeStatuses = new Set(['待处理', '待启动', '进行中', '阻塞']);
+  const rowMap = new Map();
+  const now = dateInTZ();
+  const nowTs = parseTZDateToEpoch(now);
+  const currentWeekKey = periodKeyByGranularity(now, 'week');
+  const currentWeekStart = currentWeekKey ? currentWeekKey.split('~')[0] : beijingTodayDate();
+  const currentWeekStartTs = parseTZDateToEpoch(`${currentWeekStart}T00:00:00`);
+  let snapshotChanged = false;
+
+  function overdueDisplay(dueAt, endAt) {
+    const dueTs = parseTZDateToEpoch(dueAt);
+    const endTs = parseTZDateToEpoch(endAt);
+    if (!Number.isFinite(dueTs) || !Number.isFinite(endTs) || endTs <= dueTs) return '0小时';
+    const hours = round2((endTs - dueTs) / 3600000);
+    if (hours < 24) return `${hours}小时`;
+    return `${round2(hours / 24)}天`;
+  }
+
+  function subtaskDetail(s, kind, weekEndTs) {
+    const base = {
+      id: s.id,
+      taskNo: s.taskNo,
+      title: s.title || '',
+      status: s.status || ''
+    };
+    if (kind === 'completed') {
+      return {
+        ...base,
+        completedCycle: calcDurationDisplay(s.receivedAt || s.createdAt, s.completedAt) || s.actualHours && `${s.actualHours}小时` || '',
+        overdueTime: overdueDisplay(s.dueAt, s.completedAt),
+        dueAt: s.dueAt || '',
+        completedAt: s.completedAt || ''
+      };
+    }
+    const dueTs = parseTZDateToEpoch(s.dueAt);
+    const checkTs = Math.min(Number.isFinite(nowTs) ? nowTs : weekEndTs, weekEndTs);
+    const isOverdueInProgress = Number.isFinite(dueTs) && Number.isFinite(checkTs) && checkTs > dueTs;
+    return {
+      ...base,
+      displayStatus: isOverdueInProgress ? `${s.status || ''}（逾期中）` : (s.status || ''),
+      isOverdueInProgress,
+      overdueTime: isOverdueInProgress ? overdueDisplay(s.dueAt, dateInTZ(new Date(checkTs))) : '0小时',
+      plannedCycle: s.expectedCycle || calcDurationDisplay(s.receivedAt || s.createdAt, s.dueAt) || '',
+      receivedAt: s.receivedAt || s.createdAt || '',
+      dueAt: s.dueAt || ''
+    };
+  }
+
+  function weeklyAccountEnabled(acc) {
+    if (!acc || acc.enabled === false) return false;
+    // 默认 bootstrap superadmin 是系统管理账号，不作为人员周报统计行。
+    if (String(acc.role || '').trim() === 'superadmin') return false;
+    return true;
+  }
+
+  function weeklyAccountMatchesFilters(acc) {
+    if (!weeklyAccountEnabled(acc)) return false;
+    const dept = String(acc?.position || acc?.department || '未知').trim() || '未知';
+    if (department && dept !== department) return false;
+    if (assigneeNorm && !(sameUser(acc?.username, assignee) || sameUser(acc?.tgUsername, assignee) || normUser(acc?.name) === assigneeNorm)) return false;
+    return true;
+  }
+
+  function ensureRow(acc, fallbackActor) {
+    const actor = String(fallbackActor || '').trim();
+    const userKey = normUser(acc?.tgUsername || acc?.username || actor);
+    if (!userKey) return null;
+    const dept = String(acc?.position || acc?.department || '未知').trim() || '未知';
+    const person = String(acc?.name || acc?.tgUsername || acc?.username || actor).trim() || actor;
+    const tgUsername = acc?.tgUsername ? `@${String(acc.tgUsername).replace(/^@+/, '')}` : (actor.startsWith('@') ? actor : (acc?.username ? `@${acc.username}` : actor));
+    const key = `${dept}__${userKey}`;
+    if (!rowMap.has(key)) {
+      rowMap.set(key, {
+        department: dept,
+        person,
+        assignee: tgUsername,
+        userKey,
+        isAccountSeed: false,
+        totalCompleted: 0,
+        totalInProgress: 0,
+        weeks: weeks.map(w => ({ key: w.key, completed: 0, inProgress: 0, completedIds: [], inProgressIds: [], completedDetails: [], inProgressDetails: [], note: '' }))
+      });
+    }
+    return rowMap.get(key);
+  }
+
+  // 周报行以“账号管理”的启用用户为准：即使当月/当周没有任务，也保留人员行，避免刚按账号列表过滤后人员从周报中消失。
+  for (const acc of (db.accounts || [])) {
+    if (!weeklyAccountMatchesFilters(acc)) continue;
+    const row = ensureRow(acc, acc.tgUsername || acc.username || acc.name || '');
+    if (row) row.isAccountSeed = true;
+  }
+
+  function addCompleted(cell, row, s) {
+    cell.completed += 1;
+    cell.completedIds.push(s.id);
+    cell.completedDetails.push(subtaskDetail(s, 'completed'));
+    row.totalCompleted += 1;
+  }
+
+  function addInProgress(cell, row, s, weekEndTs) {
+    cell.inProgress += 1;
+    cell.inProgressIds.push(s.id);
+    cell.inProgressDetails.push(subtaskDetail(s, 'inProgress', weekEndTs));
+    row.totalInProgress += 1;
+  }
+
+  for (const s of (db.subtasks || [])) {
+    if (!taskMap.has(s.taskNo)) continue;
+    const actor = String(s.assignee || '').trim();
+    if (!actor) continue;
+    const acc = accountForActor(db, actor);
+    if (!weeklyAccountEnabled(acc)) continue;
+    const dept = String(acc?.position || acc?.department || '未知').trim() || '未知';
+    if (department && dept !== department) continue;
+    if (assigneeNorm && !(sameUser(actor, assignee) || sameUser(acc?.username, assignee) || sameUser(acc?.tgUsername, assignee) || normUser(acc?.name) === assigneeNorm)) continue;
+    const row = ensureRow(acc, actor);
+    if (!row) continue;
+
+    const status = String(s.status || '').trim();
+    const completedTs = parseTZDateToEpoch(s.completedAt);
+    const startTs = parseTZDateToEpoch(s.receivedAt || s.createdAt);
+    weeks.forEach((w, idx) => {
+      // 未到该自然周的周一前，未来周默认空白，不提前统计计划/进行中/完成任务。
+      if (Number.isFinite(nowTs) && w.startTs > nowTs) return;
+      const cell = row.weeks[idx];
+      if (status === '已完成' && Number.isFinite(completedTs) && completedTs >= w.startTs && completedTs <= w.endTs) {
+        addCompleted(cell, row, s);
+        return;
+      }
+      // 周快照/周报进行中语义：只要子任务在该周结束前已开始，且该周结束时尚未完成，就在该周继续显示为进行中。
+      const wasStillOpenAtWeekEnd = Number.isFinite(startTs) && startTs <= w.endTs && (!Number.isFinite(completedTs) || completedTs > w.endTs);
+      if (wasStillOpenAtWeekEnd && (activeStatuses.has(status) || Number.isFinite(completedTs))) {
+        addInProgress(cell, row, s, w.endTs);
+      }
+    });
+  }
+
+  for (const row of rowMap.values()) {
+    for (const cell of row.weeks) {
+      cell.completedDetails.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+      cell.inProgressDetails.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+    }
+  }
+
+  let rows = Array.from(rowMap.values()).sort((a, b) =>
+    a.department.localeCompare(b.department, 'zh-CN') ||
+    (b.totalCompleted + b.totalInProgress) - (a.totalCompleted + a.totalInProgress) ||
+    a.person.localeCompare(b.person, 'zh-CN')
+  );
+
+  const snapshotFilterKey = `${project || '*'}__${department || '*'}__${assigneeNorm || '*'}`;
+  db.weeklyReportSnapshots = db.weeklyReportSnapshots || {};
+  weeks.forEach((w, idx) => {
+    const snapshotKey = `${snapshotFilterKey}__${w.key}`;
+    // 未来周未到周一前不读取/生成快照，保持单元格为空。
+    if (Number.isFinite(nowTs) && w.startTs > nowTs) return;
+    const existing = db.weeklyReportSnapshots[snapshotKey];
+    const shouldPersistThisWeek = !!persistSnapshot && Number.isFinite(currentWeekStartTs) && w.startTs >= currentWeekStartTs && w.startTs <= nowTs;
+    const shouldUsePersistedPast = existing && Number.isFinite(currentWeekStartTs) && w.startTs < currentWeekStartTs;
+
+    if (shouldUsePersistedPast) {
+      const byUser = new Map((existing.rows || []).map(r => [r.userKey, r]));
+      for (const row of rows) {
+        const snapRow = byUser.get(row.userKey);
+        if (!snapRow || !snapRow.week) continue;
+        row.weeks[idx] = JSON.parse(JSON.stringify(snapRow.week));
+      }
+      for (const snapRow of (existing.rows || [])) {
+        if (rows.some(r => r.userKey === snapRow.userKey)) continue;
+        rows.push({
+          department: snapRow.department,
+          person: snapRow.person,
+          assignee: snapRow.assignee,
+          userKey: snapRow.userKey,
+          isAccountSeed: false,
+          totalCompleted: 0,
+          totalInProgress: 0,
+          weeks: weeks.map(ww => ww.key === w.key ? JSON.parse(JSON.stringify(snapRow.week)) : { key: ww.key, completed: 0, inProgress: 0, completedIds: [], inProgressIds: [], completedDetails: [], inProgressDetails: [], note: '' })
+        });
+      }
+    }
+
+    if (shouldPersistThisWeek) {
+      const snapshotRows = rows
+        .map(r => ({ department: r.department, person: r.person, assignee: r.assignee, userKey: r.userKey, week: r.weeks[idx] }))
+        .filter(r => (r.week?.completed || 0) > 0 || (r.week?.inProgress || 0) > 0);
+      const normalizedRows = snapshotKind === 'plan'
+        ? snapshotRows
+          .map(r => ({
+            ...r,
+            week: {
+              ...r.week,
+              completed: 0,
+              completedIds: [],
+              completedDetails: []
+            }
+          }))
+          .filter(r => (r.week?.inProgress || 0) > 0)
+        : snapshotRows;
+      const nextSnapshot = {
+        key: snapshotKey,
+        kind: snapshotKind,
+        generatedAt: now,
+        filters: { project, department: department || '', assignee: assignee || '' },
+        week: { key: w.key, label: w.label, start: w.start, end: w.end },
+        rows: normalizedRows
+      };
+      const targetStore = snapshotKind === 'plan'
+        ? (db.weeklyReportPlanSnapshots = db.weeklyReportPlanSnapshots || {})
+        : snapshotKind === 'final'
+          ? (db.weeklyReportFinalSnapshots = db.weeklyReportFinalSnapshots || {})
+          : (db.weeklyReportSnapshots = db.weeklyReportSnapshots || {});
+      const targetExisting = targetStore[snapshotKey];
+      if (JSON.stringify(targetExisting || null) !== JSON.stringify(nextSnapshot)) {
+        targetStore[snapshotKey] = nextSnapshot;
+        // latest 可读快照：周一计划先写入，周日晚最终快照覆盖为最新版本。
+        db.weeklyReportSnapshots[snapshotKey] = nextSnapshot;
+        snapshotChanged = true;
+      }
+    }
+  });
+
+  for (const row of rows) {
+    row.weeks.forEach(cell => {
+      const noteKey = `${normalizedMonth}|${cell.key}|${row.userKey}`;
+      cell.note = String((db.weeklyReportNotes && db.weeklyReportNotes[noteKey]) || '').trim();
+    });
+    row.totalCompleted = row.weeks.reduce((sum, c) => sum + Number(c.completed || 0), 0);
+    row.totalInProgress = row.weeks.reduce((sum, c) => sum + Number(c.inProgress || 0), 0);
+  }
+  rows = rows
+    .filter(r => r.isAccountSeed || r.totalCompleted || r.totalInProgress)
+    .sort((a, b) =>
+      a.department.localeCompare(b.department, 'zh-CN') ||
+      (b.totalCompleted + b.totalInProgress) - (a.totalCompleted + a.totalInProgress) ||
+      a.person.localeCompare(b.person, 'zh-CN')
+    );
+
+  const totals = {
+    completed: rows.reduce((sum, r) => sum + r.totalCompleted, 0),
+    inProgress: rows.reduce((sum, r) => sum + r.totalInProgress, 0),
+    people: rows.length
+  };
+  const departments = Array.from(new Set([...(db.accounts || []).map(a => String(a.position || a.department || '').trim()).filter(Boolean), ...rows.map(r => r.department)])).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  return { filters: { project, month: normalizedMonth, department: department || '', assignee: assignee || '' }, weeks, totals, rows, departments, snapshotSaved: snapshotChanged, snapshotPolicy: { currentWeekKey, persistSnapshot: !!persistSnapshot, snapshotKind } };
+}
 function buildDashboardStats(db, { project = '18game', from = '', to = '', granularity = 'day' } = {}) {
   granularity = ['day', 'week', 'month'].includes(granularity) ? granularity : 'day';
   const fromTs = from ? parseTZDateToEpoch(`${from}T00:00:00`) : null;
@@ -443,8 +859,8 @@ function buildDashboardStats(db, { project = '18game', from = '', to = '', granu
     const flowCount = flowCountByTask[t.taskNo] || 0;
     const efficiencyHours = completed ? toHours(t.createdAt, t.completedAt) : null;
     const delayed = completed ? !!delayedFlag(t.completedAt, t.expectedReleaseDate) : null;
-    const overdueDays = (completed && delayed)
-      ? Math.max(0, round2((parseTZDateToEpoch(t.completedAt) - parseTZDateToEpoch(`${t.expectedReleaseDate}T23:59:59`)) / 86400000))
+    const overdueDays = (!completed && t.expectedReleaseDate)
+      ? Math.max(0, round2((Date.now() - parseTZDateToEpoch(`${t.expectedReleaseDate}T23:59:59`)) / 86400000))
       : 0;
     const onTime = completed ? !delayed : null;
     const score = completed
@@ -683,7 +1099,8 @@ function buildDashboardStats(db, { project = '18game', from = '', to = '', granu
 
   const problemSubtasks = [...subtasks]
     .map(s => {
-      const overdueHours = (s.dueAt && s.status !== '已完成')
+      const monitorOverdue = s.status === '待处理' || s.status === '进行中';
+      const overdueHours = (s.dueAt && monitorOverdue)
         ? Math.max(0, toHours(s.dueAt, dateInTZ()))
         : 0;
       return {
@@ -1114,12 +1531,45 @@ function checkAndPrintDailyReport() {
 
 setInterval(checkAndPrintDailyReport, 30000);
 
+function checkAndGenerateWeeklyReportSnapshots() {
+  const db = loadDB();
+  ensureDefaults(db);
+  const ts = dateInTZ();
+  const hhmm = ts.slice(11, 16);
+  const weekday = beijingWeekdayShort();
+  const weekKey = periodKeyByGranularity(ts, 'week');
+  const month = ts.slice(0, 7);
+  if (!weekKey) return;
+  db.weeklyReportSchedule = db.weeklyReportSchedule || {};
+
+  // 每周一凌晨生成“本周计划”快照：只保留本周仍在进行中的子任务。
+  if (weekday === 'Mon' && hhmm === '00:05' && db.weeklyReportSchedule.lastPlanWeekKey !== weekKey) {
+    const report = buildWeeklyReportStats(db, { project: '18game', month, persistSnapshot: true, snapshotKind: 'plan' });
+    db.weeklyReportSchedule.lastPlanWeekKey = weekKey;
+    db.weeklyReportSchedule.lastPlanAt = ts;
+    saveDB(db);
+    console.log(`[weekly-report] plan snapshot saved week=${weekKey} rows=${report.rows.length}`);
+  }
+
+  // 每周日晚按最新数据重新生成“本周周报”快照，并覆盖 latest 周报快照。
+  if (weekday === 'Sun' && hhmm === '23:55' && db.weeklyReportSchedule.lastFinalWeekKey !== weekKey) {
+    const report = buildWeeklyReportStats(db, { project: '18game', month, persistSnapshot: true, snapshotKind: 'final' });
+    db.weeklyReportSchedule.lastFinalWeekKey = weekKey;
+    db.weeklyReportSchedule.lastFinalAt = ts;
+    saveDB(db);
+    console.log(`[weekly-report] final snapshot saved week=${weekKey} rows=${report.rows.length}`);
+  }
+}
+
+setInterval(checkAndGenerateWeeklyReportSnapshots, 30000);
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = decodeURIComponent(url.pathname || '/');
   const method = req.method;
   const db = loadDB();
 
-  if (method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+  if (method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
     const p = path.join(PUBLIC_DIR, 'index.html');
     if (fs.existsSync(p)) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -1127,8 +1577,67 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (method === 'GET' && (pathname === '/任务进度甘特图_V1.html' || pathname === '/任务进度甘特图_V1.md')) {
+    const filename = pathname.replace(/^\//, '');
+    const p = path.join(PUBLIC_DIR, filename);
+    if (!fs.existsSync(p) || !fs.statSync(p).isFile()) {
+      return json(res, 404, { error: 'File not found' });
+    }
+    const ext = path.extname(filename).toLowerCase();
+    const contentType = ext === '.md' ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8';
+    res.writeHead(200, { 'Content-Type': contentType });
+    return fs.createReadStream(p).pipe(res);
+  }
+
   if (method === 'GET' && url.pathname === '/health') {
     return json(res, 200, { ok: true, time: dateInTZ() });
+  }
+
+
+  if (method === 'POST' && url.pathname === '/uploads/subtasks') {
+    const user = getActor(req, db);
+    if (!user) return json(res, 401, { error: 'Missing X-User or X-Auth-Token' });
+    try {
+      const body = await parseBody(req);
+      const files = Array.isArray(body.files) ? body.files.slice(0, 3) : [];
+      if (!files.length) return json(res, 400, { error: '请选择图片' });
+      const attachments = [];
+      for (const file of files) {
+        attachments.push(normalizeAttachment(saveUploadedImageFromBase64(file, user)));
+      }
+      return json(res, 200, { ok: true, attachments: attachments.filter(Boolean) });
+    } catch (e) {
+      return json(res, 400, { error: e.message || '图片上传失败' });
+    }
+  }
+
+  if (method === 'GET' && url.pathname.startsWith('/uploads/subtasks/')) {
+    let user = getAuthUser(req, db);
+    if (!user) {
+      const qt = String(url.searchParams.get('token') || '');
+      const s = qt ? db.sessions[qt] : null;
+      if (s && s.expiresAt > Date.now()) {
+        user = db.accounts.find(a => a.username === s.username && a.enabled !== false) || null;
+      }
+    }
+    if (!user) return json(res, 401, { error: 'Unauthorized' });
+
+    const rel = decodeURIComponent(url.pathname.replace('/uploads/subtasks/', ''));
+    if (!rel || rel.includes('..') || rel.includes('\\')) {
+      return json(res, 400, { error: 'Invalid upload path' });
+    }
+    const p = path.join(UPLOADS_DIR, 'subtasks', rel);
+    const root = path.join(UPLOADS_DIR, 'subtasks');
+    if (!p.startsWith(root) || !fs.existsSync(p) || !fs.statSync(p).isFile()) {
+      return json(res, 404, { error: 'File not found' });
+    }
+    const ext = path.extname(p).toLowerCase();
+    const contentType = ext === '.png' ? 'image/png'
+      : ext === '.webp' ? 'image/webp'
+      : ext === '.gif' ? 'image/gif'
+      : 'image/jpeg';
+    res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'private, max-age=3600' });
+    return fs.createReadStream(p).pipe(res);
   }
 
   if (method === 'GET' && url.pathname.startsWith('/exports/')) {
@@ -1396,7 +1905,8 @@ const server = http.createServer(async (req, res) => {
         createdBy: user,
         createdAt: now,
         updatedAt: now,
-        source: 'manual'
+        source: 'manual',
+        attachments: normalizeAttachments(body.attachments || []).map(a => ({ ...a, addedBy: user, addedAt: a.addedAt || now }))
       };
 
       if (subtask.needDependencyCheck && hasUnfinishedDependencies(subtask, db)) {
@@ -1418,7 +1928,7 @@ const server = http.createServer(async (req, res) => {
     const list = db.subtasks
       .filter(s => s.taskNo === taskNo)
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-      .map(s => ({ ...s, latestNote: latestSubtaskNote(db, s.id) }));
+      .map(s => hydrateAttachmentUrls({ ...s, latestNote: latestSubtaskNote(db, s.id) }, req));
     return json(res, 200, list);
   }
 
@@ -1444,7 +1954,7 @@ const server = http.createServer(async (req, res) => {
       .map(s => {
         const task = db.tasks.find(t => t.taskNo === s.taskNo) || null;
         return {
-          ...s,
+          ...hydrateAttachmentUrls(s, req),
           latestNote: latestSubtaskNote(db, s.id),
           taskName: task?.name || null,
           taskProject: task?.project || null,
@@ -1454,6 +1964,33 @@ const server = http.createServer(async (req, res) => {
       .sort((a, b) => (parseTZDateToEpoch(b.createdAt || '') || 0) - (parseTZDateToEpoch(a.createdAt || '') || 0));
 
     return json(res, 200, list);
+  }
+
+
+  if (method === 'POST' && /\/subtasks\/[^/]+\/attachments$/.test(url.pathname)) {
+    const user = getActor(req, db);
+    if (!user) return json(res, 401, { error: 'Missing X-User or X-Auth-Token' });
+    const id = Number(decodeURIComponent(url.pathname.split('/')[2]));
+    const subtask = db.subtasks.find(s => s.id === id);
+    if (!subtask) return json(res, 404, { error: 'Subtask not found' });
+
+    try {
+      const body = await parseBody(req);
+      const incoming = normalizeAttachments(body.attachments || body.attachment || []);
+      if (!incoming.length) return json(res, 400, { error: 'Missing valid image attachments' });
+      const now = dateInTZ();
+      const existing = normalizeAttachments(subtask.attachments || []);
+      const capacity = Math.max(0, 3 - existing.length);
+      if (capacity <= 0) return json(res, 400, { error: '子任务最多支持3张图片' });
+      const added = incoming.slice(0, capacity).map(a => ({ ...a, addedBy: user, addedAt: a.addedAt || now }));
+      subtask.attachments = existing.concat(added);
+      subtask.updatedAt = now;
+      addSubtaskLog(db, { subtaskId: subtask.id, action: 'add_attachments', actor: user, note: `新增图片${added.length}张` });
+      saveDB(db);
+      return json(res, 200, { ok: true, addedCount: added.length, ignoredCount: incoming.length - added.length, subtask: hydrateAttachmentUrls(subtask, req) });
+    } catch {
+      return json(res, 400, { error: 'Invalid JSON body' });
+    }
   }
 
   if (method === 'PATCH' && /\/subtasks\/[^/]+$/.test(url.pathname)) {
@@ -1471,6 +2008,7 @@ const server = http.createServer(async (req, res) => {
       if (body.title !== undefined) subtask.title = body.title;
       if (body.description !== undefined) subtask.description = body.description;
       if (body.priority !== undefined) subtask.priority = body.priority;
+      if (body.attachments !== undefined) subtask.attachments = normalizeAttachments(body.attachments);
       if (body.assignee !== undefined) {
         if (hasMultipleUsers(body.assignee)) return json(res, 400, { error: 'assignee只允许1人' });
         subtask.assignee = normalizeSingleUserToTg(body.assignee, db);
@@ -1613,6 +2151,9 @@ const server = http.createServer(async (req, res) => {
     let body = {};
     try { body = await parseBody(req); } catch {}
     subtask.status = '已取消';
+    subtask.completedAt = null;
+    subtask.actualHours = null;
+    subtask.isDelayed = null;
     subtask.updatedAt = dateInTZ();
     addSubtaskLog(db, { subtaskId: subtask.id, action: 'cancel', actor: user, note: body.reason || '' });
     recomputeTaskBySubtasks(subtask.taskNo, db);
@@ -1705,6 +2246,9 @@ const server = http.createServer(async (req, res) => {
       .filter(s => s.taskNo === taskNo && s.status !== '已完成' && s.status !== '已取消')
       .forEach(s => {
         s.status = '已取消';
+        s.completedAt = null;
+        s.actualHours = null;
+        s.isDelayed = null;
         s.updatedAt = dateInTZ();
         addSubtaskLog(db, { subtaskId: s.id, action: 'auto_cancel_by_force_close', actor: user, note: body.reason });
       });
@@ -1737,6 +2281,11 @@ const server = http.createServer(async (req, res) => {
       if (parseTZDateToEpoch(endTime) < parseTZDateToEpoch(startTime)) return json(res, 400, { error: 'endTime 不能早于 startTime' });
 
       const project = body.project || '18game';
+      const allowedDepartments = new Set(['产品', '前端', '后端', '安卓', 'iOS', '运维', '运营', 'QA']);
+      const department = String(body.department || '后端').trim();
+      if (!allowedDepartments.has(department)) {
+        return json(res, 400, { error: 'department must be one of: 产品, 前端, 后端, 安卓, iOS, 运维, 运营, QA' });
+      }
       const allowedTaskTypes = new Set(['新需求', 'bug修复', '优化']);
       const taskType = String(body.taskType || '新需求').trim();
       if (!allowedTaskTypes.has(taskType)) {
@@ -1765,6 +2314,7 @@ const server = http.createServer(async (req, res) => {
         (t.dueAt || '') === endTime &&
         (t.currentResponsible || t.executor || '') === (executor || '') &&
         JSON.stringify(t.ccList || []) === JSON.stringify(ccList) &&
+        (t.department || '后端') === department &&
         Math.abs(nowMs - parseTZDateToEpoch(t.createdAt)) <= 15000
       );
       if (duplicate) {
@@ -1790,6 +2340,7 @@ const server = http.createServer(async (req, res) => {
         name: body.name,
         taskType,
         priority,
+        department,
         docLink: body.docLink || '',
         note: body.note || '',
         requester: body.requester,
@@ -1850,6 +2401,12 @@ const server = http.createServer(async (req, res) => {
       const editable = ['name', 'docLink', 'requester', 'project', 'note'];
       for (const k of editable) if (body[k] !== undefined) task[k] = body[k];
       if (body.docLink !== undefined && !task.docLink) task.docLink = '';
+      if (body.department !== undefined) {
+        const allowedDepartments = new Set(['产品', '前端', '后端', '安卓', 'iOS', '运维', '运营', 'QA']);
+        const department = String(body.department || '').trim();
+        if (!allowedDepartments.has(department)) return json(res, 400, { error: 'department must be one of: 产品, 前端, 后端, 安卓, iOS, 运维, 运营, QA' });
+        task.department = department;
+      }
       if (body.taskType !== undefined) {
         const allowedTaskTypes = new Set(['新需求', 'bug修复', '优化']);
         const taskType = String(body.taskType || '').trim();
@@ -2029,12 +2586,15 @@ const server = http.createServer(async (req, res) => {
 
       const taskSubtasks = db.subtasks.filter(s => s.taskNo === taskNo);
       if (taskSubtasks.length > 0) {
-        const incomplete = taskSubtasks.filter(s => s.status !== '已完成');
+        // 主任务完成判断只看仍需处理的子任务；已完成/已取消等终态不阻塞主任务完成。
+        const blockingStatuses = new Set(['待处理', '进行中']);
+        const incomplete = taskSubtasks.filter(s => blockingStatuses.has(String(s.status || '').trim()));
         if (incomplete.length > 0) {
           return json(res, 400, {
-            error: '子任务未全部完成，主任务不可完成',
+            error: '存在待处理或进行中的子任务，主任务不可完成',
             taskNo,
             totalSubtasks: taskSubtasks.length,
+            blockingSubtaskCount: incomplete.length,
             incompleteCount: incomplete.length,
             incompleteSubtasks: incomplete.slice(0, 20).map(s => ({ id: s.id, title: s.title, status: s.status }))
           });
@@ -2331,6 +2891,9 @@ const server = http.createServer(async (req, res) => {
     const subtaskAssignee = url.searchParams.get('subtaskAssignee');
     const taskName = (url.searchParams.get('taskName') || '').trim();
     const subtaskName = (url.searchParams.get('subtaskName') || '').trim();
+    const department = (url.searchParams.get('department') || '').trim();
+    const taskNo = (url.searchParams.get('taskNo') || '').trim();
+    const subtaskId = Number(url.searchParams.get('subtaskId') || 0);
     const watcher = url.searchParams.get('watcher');
     const view = url.searchParams.get('view'); // history
 
@@ -2349,6 +2912,8 @@ const server = http.createServer(async (req, res) => {
       if (!watchHit) return false;
       if (t.project !== project) return false;
       if (status && t.status !== status) return false;
+      if (department && String(t.department || '').trim() !== department) return false;
+      if (taskNo && String(t.taskNo || '').toLowerCase() !== taskNo.toLowerCase()) return false;
       if (creator && !(sameUser(t.creator, creator) || identityMatchesActor(t.creator, creator, db))) return false;
       if (requester && !(sameUser(t.requester, requester) || identityMatchesActor(t.requester, requester, db))) return false;
       if (currentResponsible && !(sameUser(t.currentResponsible, currentResponsible) || identityMatchesActor(t.currentResponsible, currentResponsible, db))) return false;
@@ -2362,6 +2927,10 @@ const server = http.createServer(async (req, res) => {
       }
       if (subtaskName) {
         const hit = db.subtasks.some(s => s.taskNo === t.taskNo && String(s.title || '').toLowerCase().includes(subtaskName.toLowerCase()));
+        if (!hit) return false;
+      }
+      if (subtaskId) {
+        const hit = db.subtasks.some(s => s.taskNo === t.taskNo && Number(s.id) === subtaskId);
         if (!hit) return false;
       }
 
@@ -2400,7 +2969,7 @@ const server = http.createServer(async (req, res) => {
       subtasks: db.subtasks
         .filter(s => s.taskNo === taskNo)
         .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-        .map(s => ({ ...s, latestNote: latestSubtaskNote(db, s.id) }))
+        .map(s => hydrateAttachmentUrls({ ...s, latestNote: latestSubtaskNote(db, s.id) }, req))
     });
   }
 
@@ -2415,6 +2984,43 @@ const server = http.createServer(async (req, res) => {
     const to = (url.searchParams.get('to') || '').trim();
     const granularity = (url.searchParams.get('granularity') || 'day').trim();
     return json(res, 200, buildDashboardStats(db, { project, from, to, granularity }));
+  }
+
+  if (method === 'GET' && url.pathname === '/reports/weekly') {
+    const project = url.searchParams.get('project') || '18game';
+    const month = (url.searchParams.get('month') || '').trim();
+    const department = (url.searchParams.get('department') || '').trim();
+    const assignee = (url.searchParams.get('assignee') || '').trim();
+    const persist = (url.searchParams.get('persistSnapshot') || '').trim();
+    const report = buildWeeklyReportStats(db, {
+      project,
+      month,
+      department,
+      assignee,
+      persistSnapshot: persist === 'plan' || persist === 'final',
+      snapshotKind: persist === 'plan' ? 'plan' : persist === 'final' ? 'final' : 'manual'
+    });
+    if (report.snapshotSaved) saveDB(db);
+    return json(res, 200, report);
+  }
+
+  if (method === 'POST' && url.pathname === '/reports/weekly/note') {
+    const user = requireLogin(req, res, db);
+    if (!user) return;
+    const body = await readBody(req);
+    const month = String(body.month || '').trim();
+    const weekKey = String(body.weekKey || '').trim();
+    const assigneeUserKey = normUser(body.assigneeUserKey || '');
+    const note = String(body.note || '').trim();
+    if (!month || !weekKey || !assigneeUserKey) return json(res, 400, { error: 'month/weekKey/assigneeUserKey required' });
+    const myKey = normUser(user.tgUsername || user.username || '');
+    if (!myKey || myKey !== assigneeUserKey) return json(res, 403, { error: '只能编辑自己的周报备注' });
+    db.weeklyReportNotes = db.weeklyReportNotes || {};
+    const key = `${month}|${weekKey}|${assigneeUserKey}`;
+    if (note) db.weeklyReportNotes[key] = note;
+    else delete db.weeklyReportNotes[key];
+    saveDB(db);
+    return json(res, 200, { ok: true });
   }
 
   return json(res, 404, { error: 'Not Found' });

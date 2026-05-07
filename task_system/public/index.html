@@ -5,33 +5,694 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>18game 任务系统</title>
   <style>
-    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; margin: 20px; background:#f7f7f9; }
-    .card { background:#fff; border-radius:12px; padding:16px; margin-bottom:14px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
-    input,button,textarea { padding:8px; margin:6px 0; width:100%; box-sizing:border-box; }
+    :root {
+      --bg: #F3F0EE;
+      --surface: #FCFBFA;
+      --ink: #3a3532;
+      --text-soft: #565656;
+      --line: #D1CDC7;
+      --signal: #CF4500;
+      --signal-soft: #F37338;
+      --link: #3860BE;
+      --btn-bg: #8C5B45;
+      --btn-bg-hover: #9A644D;
+      --btn-text: #fff;
+      --btn-outline: #8C5B45;
+      --radius-xl: 40px;
+      --radius-pill: 999px;
+      --shadow-sm: 0 8px 24px rgba(20,20,19,.06);
+      --shadow-md: 0 16px 40px rgba(20,20,19,.08);
+    }
+
+    body[data-theme='dark'] {
+      --bg: #1d1b1a;
+      --surface: #262322;
+      --ink: #f3f0ee;
+      --text-soft: #cabfb6;
+      --line: #4e4742;
+      --link: #90b3ff;
+      --btn-bg: #CF4500;
+      --btn-bg-hover: #de5d24;
+      --btn-text: #fff;
+      --btn-outline: #CF4500;
+      --shadow-sm: 0 10px 28px rgba(0,0,0,.35);
+      --shadow-md: 0 20px 44px rgba(0,0,0,.45);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Sofia Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      margin: 20px;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.4;
+      letter-spacing: .01em;
+      box-sizing: border-box;
+    }
+
+    h2, h3 {
+      margin-top: 0;
+      letter-spacing: -0.02em;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    h2 {
+      margin-bottom: 16px;
+      font-size: 32px;
+      background: linear-gradient(90deg, #141413, #3d2a1f);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid rgba(20,20,19,.08);
+      border-radius: var(--radius-xl);
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    input, button, textarea, select {
+      width: 100%;
+      margin: 6px 0;
+      padding: 10px 12px;
+      border-radius: 20px;
+      border: 1.5px solid rgba(20,20,19,.2);
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--signal);
+      box-shadow: 0 0 0 3px rgba(243,115,56,.18);
+    }
+
+    button {
+      background: var(--btn-bg);
+      border-color: var(--btn-outline);
+      color: var(--btn-text);
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      transition: transform .08s ease, opacity .2s ease, background .2s ease;
+    }
+
+    button:hover { opacity: .95; background: var(--btn-bg-hover); }
+    button:active { transform: translateY(1px); }
+    button.secondary { background: #f8fafc; border-color: #cbd5e1; color: #334155; }
+    button.secondary:hover { background: #eef2ff; border-color: #a5b4fc; }
+
     .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
-    .task { border:1px solid #eee; border-radius:8px; padding:10px; margin:8px 0; }
-    .muted { color:#666; font-size:12px; }
+
+    .task {
+      border: 1px solid rgba(20,20,19,.1);
+      border-radius: 24px;
+      padding: 14px;
+      margin: 8px 0;
+      background: #fff;
+      box-shadow: 0 4px 16px rgba(20,20,19,.04);
+    }
+
+    .task-head,
+    .task-owner,
+    .task-time,
+    .task-actions {
+      padding: 10px 12px;
+      border: 1px solid rgba(20,20,19,.08);
+      border-radius: 16px;
+      background: rgba(252,251,250,.85);
+      margin-bottom: 8px;
+    }
+
+    .task-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .task-title { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; }
+
+    .task-actions { display:flex; gap:6px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .subtask-panel { margin-top: 6px; font-size: 13px; }
+    .subtask-section-title { margin-top: 5px; display:flex; align-items:center; gap:6px; line-height:1.2; }
+    .subtask-section-title b { font-size: 13px; }
+    .subtask-panel table { font-size: 13px; border-radius: 10px; }
+    .subtask-panel th,
+    .subtask-panel td { padding: 4px 5px; line-height: 1.25; vertical-align: top; }
+    .subtask-panel th { font-weight: 600; white-space: nowrap; }
+    .subtask-panel td:nth-child(1),
+    .subtask-panel td:nth-child(2),
+    .subtask-panel td:nth-child(7),
+    .subtask-panel td:nth-child(8),
+    .subtask-panel td:nth-child(9),
+    .subtask-panel td:nth-child(10) { white-space: nowrap; }
+    .subtask-panel td:last-child { min-width: 96px; }
+    .subtask-panel .btn-sm { padding: 2px 6px; margin: 1px; font-size: 10px; line-height: 1.2; border-radius: 10px; min-height: 20px; }
+    .subtask-row-ok td { background: rgba(57, 166, 122, .08); }
+    .subtask-row-overdue td { background: rgba(207, 69, 0, .12); }
+    .subtask-row-done td { background: rgba(56, 96, 190, .10); }
+    .subtask-images { display:flex; gap:4px; flex-wrap:wrap; margin-top:4px; }
+    .subtask-attachment-link { display:inline-flex; align-items:center; gap:4px; border:1px solid rgba(56,96,190,.28); border-radius:999px; background:rgba(56,96,190,.08); color:#2c4a92; padding:2px 7px; font-size:12px; line-height:1.25; cursor:pointer; }
+    .subtask-attachment-link:hover { background:rgba(56,96,190,.14); }
+    .subtask-images a { display:inline-flex; border:1px solid rgba(20,20,19,.12); border-radius:6px; overflow:hidden; background:#fff; }
+    .subtask-images img { width:48px; height:48px; object-fit:cover; display:block; }
+    .attachment-preview-img { max-width:min(86vw, 980px); max-height:78vh; border-radius:12px; display:block; margin:0 auto; }
+
+    .muted { color: var(--text-soft); font-size: 12px; }
     .hidden { display:none !important; }
-    table { width:100%; border-collapse: collapse; }
-    th, td { border-bottom:1px solid #eee; padding:8px; text-align:left; }
-    .layout { display:grid; grid-template-columns:220px 1fr; gap:14px; align-items:start; }
-    .menu button { text-align:left; }
-    .menu button.active { background:#111; color:#fff; }
-    .btn-sm { width:auto; padding:4px 8px; margin:2px; font-size:12px; }
+
+    table { width:100%; border-collapse: collapse; background:#fff; border-radius:16px; overflow:hidden; }
+    th, td { border-bottom:1px solid #ece7e2; padding:10px 8px; text-align:left; }
+
+    .layout {
+      display:grid;
+      grid-template-columns:260px 1fr;
+      gap:14px;
+      align-items:start;
+      transition: grid-template-columns .2s ease;
+    }
+
+    .layout.sidebar-collapsed { grid-template-columns: 84px 1fr; }
+
+    .menu {
+      position: sticky;
+      top: 16px;
+      border-radius: 32px;
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+
+    .menu .menu-label { margin-left: 6px; }
+    .layout.sidebar-collapsed .menu .menu-label { display: none; }
+    .layout.sidebar-collapsed .menu button { text-align: center; padding-left: 8px; padding-right: 8px; }
+    .layout.sidebar-collapsed .menu button .menu-icon { margin: 0; }
+
+    .menu button {
+      text-align:left;
+      border-radius: var(--radius-pill);
+      padding: 10px 14px;
+    }
+
+    .menu button.active {
+      background: var(--btn-bg) !important;
+      color: #fff !important;
+      border-color: var(--btn-outline) !important;
+      font-weight: 700;
+      box-shadow: 0 0 0 2px rgba(0, 105, 82, .16) inset, 0 2px 8px rgba(0,0,0,.08);
+      transform: translateX(2px);
+    }
+
+    .menu #menuCollapseBtn {
+      background: linear-gradient(135deg, #3860BE, #1d4ed8);
+      border-color: #1e40af;
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(56, 96, 190, .28);
+    }
+
+    .menu #menuCollapseBtn:hover {
+      background: linear-gradient(135deg, #456fd0, #2563eb);
+      border-color: #1d4ed8;
+      opacity: 1;
+    }
+
+    .btn-sm { width:auto; padding:6px 10px; margin:2px; font-size:12px; border-radius:16px; }
+
     .kpi-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; }
-    .kpi { border:1px solid #eee; border-radius:10px; padding:10px; background:#fafafa; }
-    .kpi .n { font-size:22px; font-weight:700; }
+    .kpi {
+      border:1px solid #ece7e2;
+      border-radius:24px;
+      padding:12px;
+      background:#fff;
+    }
+    .kpi .n { font-size:24px; font-weight:700; letter-spacing:-0.02em; }
+
+    .weekly-report-toolbar { display:grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap:10px; align-items:end; }
+    .weekly-report-summary { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; }
+    .weekly-report-summary .chip { border:1px solid #ece7e2; background:#fff; border-radius:999px; padding:6px 10px; font-size:12px; }
+    .weekly-report-table-wrap { overflow:auto; border:1px solid #ece7e2; border-radius:16px; background:#fff; }
+    .weekly-report-table { min-width:860px; font-size:13px; }
+    .weekly-report-table th, .weekly-report-table td { text-align:center; white-space:nowrap; }
+    .weekly-report-table th:first-child, .weekly-report-table td:first-child { text-align:left; min-width:86px; }
+    .weekly-report-table th:nth-child(2), .weekly-report-table td:nth-child(2) { text-align:left; min-width:128px; }
+    .weekly-report-table th, .weekly-report-table td { vertical-align: top; }
+    .weekly-cell { display:flex; flex-direction:column; gap:6px; min-width:240px; text-align:left; }
+    .weekly-cell-summary { display:flex; justify-content:center; gap:4px; align-items:center; font-size:13px; }
+    .weekly-detail-block { border:1px solid #ece7e2; border-radius:10px; padding:5px; background:#fcfbfa; }
+    .weekly-detail-title { font-weight:700; font-size:12px; margin-bottom:3px; }
+    .weekly-detail-empty { color:var(--text-soft); font-size:11px; }
+    .weekly-detail-item { border-top:1px dashed #e7ded7; padding-top:4px; margin-top:4px; font-size:11px; line-height:1.35; white-space:normal; word-break:break-word; }
+    .weekly-detail-item:first-of-type { border-top:0; padding-top:0; margin-top:0; }
+    .weekly-detail-meta { color:var(--text-soft); }
+    .weekly-done { color:#3860BE; font-weight:700; }
+    .weekly-wip { color:#CF4500; font-weight:700; }
+
     .chart-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    .bar { height:10px; background:#eceff4; border-radius:999px; overflow:hidden; }
-    .bar > span { display:block; height:100%; background:#4f7cff; }
-    .vchart { display:flex; align-items:flex-end; gap:8px; min-height:220px; padding:8px; border:1px solid #eee; border-radius:8px; background:#fff; overflow-x:auto; }
+    .bar { height:10px; background:#f2eeea; border-radius:999px; overflow:hidden; }
+    .bar > span { display:block; height:100%; background:linear-gradient(90deg, var(--signal-soft), var(--signal)); }
+
+    .vchart {
+      display:flex;
+      align-items:flex-end;
+      gap:8px;
+      min-height:220px;
+      padding:10px;
+      border:1px solid #ece7e2;
+      border-radius:24px;
+      background:#fff;
+      overflow-x:auto;
+    }
     .vbar-col { min-width:52px; display:flex; flex-direction:column; align-items:center; gap:4px; }
-    .vbar-stack { width:32px; height:170px; display:flex; flex-direction:column; justify-content:flex-end; border-radius:6px; overflow:hidden; background:#f2f4f7; }
-    .vbar-a { background:#4f7cff; }
-    .vbar-b { background:#44c28d; }
-    .vbar-label { font-size:11px; color:#666; text-align:center; white-space:normal; line-height:1.2; }
+    .vbar-stack { width:32px; height:170px; display:flex; flex-direction:column; justify-content:flex-end; border-radius:8px; overflow:hidden; background:#f2f0ee; }
+    .vbar-a { background:#141413; }
+    .vbar-b { background:#CF4500; }
+    .vbar-label { font-size:11px; color:#696969; text-align:center; white-space:normal; line-height:1.2; }
     .vbar-num { font-size:11px; font-weight:600; }
+
+    a { color: var(--link); }
+
+    body[data-theme='dark'] .task-head,
+    body[data-theme='dark'] .task-owner,
+    body[data-theme='dark'] .task-time,
+    body[data-theme='dark'] .task-actions {
+      background: rgba(255,255,255,.02);
+      border-color: rgba(255,255,255,.12);
+    }
+
+    body[data-theme='dark'] .subtask-row-ok td { background: rgba(57, 166, 122, .18); }
+    body[data-theme='dark'] .subtask-row-overdue td { background: rgba(207, 69, 0, .22); }
+    body[data-theme='dark'] .subtask-row-done td { background: rgba(56, 96, 190, .2); }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: var(--radius-pill);
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-left: 6px;
+      border: 1px solid transparent;
+    }
+    .tag-pri-p0 { background: rgba(207,69,0,.15); border-color: rgba(207,69,0,.3); color: #8f2d00; }
+    .tag-pri-p1 { background: rgba(243,115,56,.15); border-color: rgba(243,115,56,.35); color: #9a3a0a; }
+    .tag-pri-p2 { background: rgba(56,96,190,.12); border-color: rgba(56,96,190,.28); color: #2c4a92; }
+    .tag-pri-p3 { background: rgba(105,105,105,.14); border-color: rgba(105,105,105,.3); color: #4f4f4f; }
+    .tag-state-done { background: rgba(27,151,104,.14); border-color: rgba(27,151,104,.35); color: #0f6f4a; }
+    .tag-state-wip { background: rgba(56,96,190,.14); border-color: rgba(56,96,190,.35); color: #2c4a92; }
+    .tag-state-block { background: rgba(194,54,22,.14); border-color: rgba(194,54,22,.35); color: #8f2d00; }
+
+    .quick-tag-group { display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap; margin-top:6px; }
+    .quick-tag-label { color: var(--text-soft); font-size:12px; min-width:56px; padding-top:4px; }
+    .quick-tag-list { display:flex; flex-wrap:wrap; gap:6px; }
+    .quick-tag {
+      display:inline-flex;
+      align-items:center;
+      gap:4px;
+      width:auto;
+      margin:0;
+      padding:5px 10px;
+      border-radius:var(--radius-pill);
+      border:1px solid rgba(20,20,19,.18);
+      background:#fff;
+      color:var(--ink);
+      font-size:12px;
+      line-height:1;
+      cursor:pointer;
+    }
+    .quick-tag.active {
+      background: rgba(56,96,190,.12);
+      border-color: rgba(56,96,190,.4);
+      color:#2c4a92;
+      font-weight:700;
+    }
+    .quick-tag-count { opacity:.75; font-weight:600; }
+
+    .timeline-cell { min-width: 280px; }
+
+    .gantt-toolbar {
+      position: static;
+      z-index: auto;
+      background: #fff;
+      padding: 6px 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      margin-bottom: 8px;
+    }
+    .gantt-filter-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .gantt-filter-grid > input,
+    .gantt-filter-grid > select {
+      flex: 1 1 160px;
+      min-width: 140px;
+      margin: 0;
+      padding: 4px 8px;
+      font-size: 12px;
+      height: 28px;
+    }
+    .gantt-filter-grid > button {
+      flex: 0 0 auto;
+      margin: 0;
+      white-space: nowrap;
+      padding: 4px 10px;
+      font-size: 12px;
+      height: 28px;
+      line-height: 1;
+    }
+    .gantt-cancel-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      flex: 0 0 auto;
+      margin: 0;
+      justify-content: flex-start;
+    }
+    .gantt-result-summary {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #f8fafc;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: nowrap;
+      overflow-x: auto;
+    }
+    .summary-chip { display: inline-flex; align-items: center; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 99px; padding: 2px 8px; font-size: 11px; color: #1d4ed8; gap: 4px; }
+    .summary-chip-x { background: none; border: none; cursor: pointer; color: #3b82f6; font-size: 13px; padding: 0; line-height: 1; }
+    .summary-chip-x:hover { color: #ef4444; }
+    .secondary-tag { background: #f1f5f9 !important; color: #64748b !important; border-color: #e2e8f0 !important; font-size: 10px; }
+    .secondary-tag:hover { background: #e2e8f0 !important; }
+    .gantt-density-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .gantt-density-label { font-size: 11px; color: #64748b; }
+    .gantt-density-btn {
+      font-size: 11px;
+      padding: 2px 9px;
+      height: 24px;
+      border: 1px solid #cbd5e1;
+      border-radius: 99px;
+      background: #f8fafc;
+      cursor: pointer;
+      color: #475569;
+      line-height: 1;
+    }
+    .gantt-density-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .gantt-phantom-scroll-track {
+      height: 12px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      position: relative;
+      background: #f1f5f9;
+      border-radius: 6px;
+      margin-top: 4px;
+      scrollbar-width: thin;
+    }
+    .gantt-phantom-scroll-inner { height: 1px; }
+    .gantt-board-shell {
+      position: relative;
+      z-index: 1;
+      isolation: isolate;
+      overflow: hidden;
+      width: 100%;
+      max-width: 100vw;
+      box-sizing: border-box;
+    }
+
+    .gantt-wrap {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      background: #fff;
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
+      position: relative;
+      box-sizing: border-box;
+    }
+    .gantt-wrap.dragging { cursor: grabbing; user-select: none; }
+    .gantt-grid {
+      width: max-content;
+      min-width: 100%;
+      --label-col: 220px;
+      --day-width: 34px;
+      --timeline-width: 1200px;
+      position: relative;
+    }
+    .gantt-header {
+      display: grid;
+      grid-template-columns: var(--label-col) var(--timeline-width);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      box-shadow: 0 1px 0 rgba(15,23,42,.08);
+    }
+    .gantt-header-label {
+      font-weight: 700;
+      padding: 10px;
+      border-right: 1px solid #e5e7eb;
+      position: sticky;
+      left: 0;
+      z-index: 35;
+      background: #fff;
+      box-shadow: 1px 0 0 rgba(15,23,42,.08);
+    }
+    .gantt-time-axis { position: relative; height: 32px; }
+    .gantt-tick-day {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      border-left: 1px solid #e5e7eb;
+      padding-left: 3px;
+      font-size: 10px;
+      line-height: 32px;
+      color: #334155;
+      white-space: nowrap;
+      font-weight: 700;
+      background: rgba(255,255,255,.8);
+    }
+
+    .gantt-row {
+      display: grid;
+      grid-template-columns: var(--label-col) var(--timeline-width);
+      border-bottom: 1px solid #f1f5f9;
+      min-height: 44px;
+    }
+    .gantt-row-label {
+      padding: 8px 10px;
+      border-right: 1px solid #e5e7eb;
+      position: sticky;
+      left: 0;
+      z-index: 20;
+      background: #fff;
+      font-size: 12px;
+      box-shadow: 1px 0 0 rgba(15,23,42,.06);
+    }
+    .gantt-row-label small { display:block; color: var(--text-soft); }
+    .gantt-row-track {
+      position: relative;
+      min-height: 44px;
+      background-image: repeating-linear-gradient(to right, #f3f4f6 0 1px, transparent 1px var(--day-width));
+      background-size: var(--day-width) 100%;
+    }
+    .gantt-bar {
+      position: absolute;
+      height: 14px;
+      border-radius: 999px;
+      min-width: 2px;
+      color: #fff;
+      font-size: 10px;
+      line-height: 14px;
+      padding: 0 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,.15);
+      cursor: pointer;
+    }
+    .gantt-bar-wip { background: linear-gradient(90deg, #60a5fa, #2563eb); }
+    .gantt-bar-done { background: linear-gradient(90deg, #34d399, #059669); }
+    .gantt-bar-cancel { background: linear-gradient(90deg, #fca5a5, #ef4444); }
+    .gantt-bar-na { background: #94a3b8; }
+    .gantt-bar-focus { outline: 2px solid #f59e0b; outline-offset: 1px; }
+    .gantt-tooltip {
+      position: fixed;
+      z-index: 99999;
+      max-width: 320px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      background: #0f172a;
+      color: #f8fafc;
+      font-size: 12px;
+      line-height: 1.35;
+      box-shadow: 0 8px 24px rgba(15,23,42,.35);
+      pointer-events: none;
+      white-space: pre-line;
+    }
+    .gantt-empty { padding:16px;border:1px dashed #d1d5db;border-radius:12px;background:#fff; }
+
+    .gantt-frame {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      background: #fff;
+      display: grid;
+      grid-template-columns: var(--label-col, 240px) minmax(0, 1fr);
+      grid-template-rows: 52px 1fr;
+      width: 100%;
+      max-width: 100%;
+      height: min(72vh, 640px);
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .gantt-corner {
+      grid-column: 1;
+      grid-row: 1;
+      padding: 10px;
+      font-weight: 700;
+      border-right: 1px solid #e5e7eb;
+      border-bottom: 1px solid #e5e7eb;
+      background: #fff;
+      z-index: 12;
+      box-shadow: 0 1px 0 rgba(15,23,42,.08);
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .gantt-col-resizer {
+      position: absolute;
+      right: 0; top: 0; bottom: 0;
+      width: 6px;
+      cursor: col-resize;
+      background: transparent;
+    }
+    .gantt-col-resizer:hover, .gantt-col-resizing .gantt-col-resizer { background: #3b82f6; opacity: 0.5; }
+    .gantt-head-viewport {
+      grid-column: 2;
+      grid-row: 1;
+      overflow: hidden;
+      min-width: 0;
+      border-bottom: 1px solid #e5e7eb;
+      background: #fff;
+      z-index: 11;
+      box-shadow: 0 1px 0 rgba(15,23,42,.08);
+    }
+    .gantt-head-inner { width: var(--timeline-width); will-change: transform; }
+    .gantt-left-viewport {
+      grid-column: 1;
+      grid-row: 2;
+      overflow: hidden;
+      min-width: 0;
+      border-right: 1px solid #e5e7eb;
+      background: #fff;
+      z-index: 3;
+    }
+    .gantt-left-inner { will-change: transform; }
+    .gantt-left-row {
+      padding: 8px 10px;
+      font-size: 12px;
+      border-bottom: 1px solid #f1f5f9;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    .gantt-left-row b { display: block; line-height: 1.25; }
+    .gantt-left-row small { display: block; color: var(--text-soft); line-height: 1.25; }
+    .gantt-body-viewport {
+      grid-column: 2;
+      grid-row: 2;
+      overflow: auto;
+      min-width: 0;
+      cursor: grab;
+      position: relative;
+      z-index: 2;
+      scrollbar-width: thin;
+    }
+    .gantt-body-viewport.dragging { cursor: grabbing; user-select: none; }
+    .gantt-body-inner { width: var(--timeline-width); }
+    .gantt-body-row { border-bottom: 1px solid #f1f5f9; box-sizing: border-box; }
+    .gantt-time-axis { position: relative; height: 52px; }
+    .gantt-month-axis,
+    .gantt-day-axis { position: relative; }
+    .gantt-month-axis { height: 24px; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
+    .gantt-day-axis { height: 28px; position: relative; }
+    .gantt-today-line {
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 2px;
+      background: #ef4444;
+      opacity: 0.7;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .gantt-body-row .gantt-today-line {
+      top: 0; bottom: 0;
+      height: 100%;
+    }
+    .gantt-tick-month-block {
+      position: absolute;
+      top: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      padding-left: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+      border-right: 1px solid #cbd5e1;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .gantt-tick-month-block:nth-child(odd) { background: #f1f5f9; }
+    .gantt-tick-month-block:nth-child(even) { background: #e8edf4; }
+    .gantt-tick-month,
+    .gantt-tick-day {
+      position: absolute;
+      left: 0;
+      white-space: nowrap;
+      border-left: 1px solid #e5e7eb;
+      padding-left: 4px;
+      color: #334155;
+      font-weight: 700;
+      font-size: 10px;
+    }
+    .gantt-tick-month { line-height: 24px; color: #475569; display: none; }
+    .gantt-tick-day { line-height: 28px; min-width: 44px; }
+    .gantt-tick-day.is-today { color: #ef4444; font-weight: 900; }
+    .gantt-tick-day.is-weekend { color: #94a3b8; }
+
+    @media (max-width: 980px) {
+      .layout { grid-template-columns: 1fr; }
+      .menu { position: static; }
+      .row3 { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 680px) {
+      body { margin: 12px; }
+      h2 { font-size: 24px; }
+      .card { border-radius: 28px; padding: 14px; }
+      .row, .row3, .chart-row, .kpi-grid { grid-template-columns: 1fr; }
+      .gantt-filter-grid > input,
+      .gantt-filter-grid > select,
+      .gantt-filter-grid > button { flex: 1 1 100%; min-width: 100%; }
+      .gantt-cancel-toggle { width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -48,13 +709,15 @@
   <div id="app" class="hidden layout">
     <div class="card menu">
       <div id="me" class="muted"></div>
-      <button id="menuTasks" class="active" onclick="showSection('tasks')">进行中任务</button>
-      <button id="menuHistory" onclick="showSection('history')">历史任务</button>
-      <button id="menuDashboard" onclick="showSection('dashboard')">效率面板</button>
-      <button id="menuPersonal" onclick="showSection('personal')">个人面板</button>
-      <button id="menuCreate" class="hidden" onclick="showSection('create')">新建任务</button>
-      <button id="menuAdmin" class="hidden" onclick="showSection('admin')">账号管理</button>
-      <button onclick="logout()">退出登录</button>
+      <button id="menuCollapseBtn" onclick="toggleSidebar()"><span class="menu-icon">↔️</span><span class="menu-label">收起</span></button>
+      <button id="menuTasks" class="active" onclick="showSection('tasks')"><span class="menu-icon">📌</span><span class="menu-label">进行中任务</span></button>
+      <button id="menuHistory" onclick="showSection('history')"><span class="menu-icon">🗂️</span><span class="menu-label">历史任务</span></button>
+      <button id="menuDashboard" onclick="showSection('dashboard')"><span class="menu-icon">📊</span><span class="menu-label">效率面板</span></button>
+      <button id="menuWeeklyReport" onclick="showSection('weeklyReport')"><span class="menu-icon">📅</span><span class="menu-label">任务周报</span></button>
+      <button id="menuPersonal" onclick="showSection('personal')"><span class="menu-icon">👤</span><span class="menu-label">个人面板</span></button>
+      <button id="menuGantt" onclick="showSection('gantt')"><span class="menu-icon">🧭</span><span class="menu-label">任务进度（甘特图）</span></button>
+      <button id="menuAdmin" class="hidden" onclick="showSection('admin')"><span class="menu-icon">🔐</span><span class="menu-label">账号管理</span></button>
+      <button onclick="logout()"><span class="menu-icon">🚪</span><span class="menu-label">退出登录</span></button>
     </div>
 
     <div>
@@ -66,6 +729,9 @@
           <input id="filterSubtaskAssignee" placeholder="子任务责任人，如 @joli" />
           <input id="filterTaskName" placeholder="主任务名称关键词，如 登录" />
           <input id="filterSubtaskName" placeholder="子任务名称关键词，如 联调" />
+          <select id="filterDepartment" onchange="loadTasks()"><option value="">部门（全部）</option></select>
+          <input id="filterTaskNo" placeholder="主任务ID，如 18G-1001 或 1001" />
+          <input id="filterSubtaskId" placeholder="子任务ID，如 276" />
           <button onclick="loadTasks()">查询</button>
         </div>
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
@@ -85,9 +751,25 @@
           <input id="filterSubtaskAssigneeHistory" placeholder="子任务责任人，如 @joli" />
           <input id="filterTaskNameHistory" placeholder="主任务名称关键词，如 登录" />
           <input id="filterSubtaskNameHistory" placeholder="子任务名称关键词，如 联调" />
+          <select id="filterDepartmentHistory" onchange="loadHistory()"><option value="">部门（全部）</option></select>
+          <input id="filterTaskNoHistory" placeholder="主任务ID，如 18G-1001 或 1001" />
+          <input id="filterSubtaskIdHistory" placeholder="子任务ID，如 276" />
           <button onclick="loadHistory()">查询</button>
         </div>
         <div id="historyTasks"></div>
+      </div>
+
+      <div class="card hidden" id="sectionWeeklyReport">
+        <h3>任务周报</h3>
+        <div class="weekly-report-toolbar">
+          <select id="weeklyDept" onchange="loadWeeklyReport()"><option value="">部门（全部）</option></select>
+          <input id="weeklyAssignee" placeholder="子任务责任人（全部）" />
+          <input id="weeklyMonth" placeholder="月份 YYYY-MM" />
+          <input id="weeklyProject" placeholder="项目" value="18game" />
+          <button onclick="loadWeeklyReport()">查询周报</button>
+        </div>
+        <div class="muted" style="margin-top:6px;">周按周一到周日计算；只展示筛选月份涉及到的自然周。单元格格式：完成 / 进行中。</div>
+        <div id="weeklyReportBox" class="muted" style="margin-top:10px;">点击“查询周报”加载</div>
       </div>
 
       <div class="card hidden" id="sectionDashboard">
@@ -132,6 +814,38 @@
         <div id="personalDashboardBox" class="muted">点击“刷新个人面板”加载</div>
       </div>
 
+      <div class="card hidden" id="sectionGantt">
+        <h3>任务进度（甘特图）</h3>
+        <div class="gantt-toolbar">
+          <div class="gantt-filter-grid">
+            <input id="ganttKeyword" placeholder="关键词（主任务ID可输 18G-1076 或 1076）" />
+            <select id="ganttDept" onchange="onGanttSelectChange('dept')"><option value="">部门（全部）</option></select>
+            <select id="ganttAssignee" onchange="onGanttSelectChange('assignee')"><option value="">负责人（全部）</option></select>
+            <select id="ganttTaskStatus"><option value="">主任务状态（全部）</option><option value="进行中" selected>进行中</option><option value="已完成">已完成</option></select>
+            <input id="ganttFrom" placeholder="开始日期 YYYY-MM-DD" />
+            <input id="ganttTo" placeholder="结束日期 YYYY-MM-DD" />
+            <label class="gantt-cancel-toggle"><input type="checkbox" id="ganttIncludeCanceled" />显示已取消子任务</label>
+            <button onclick="loadGanttStep1()">查询</button>
+            <button class="secondary" onclick="centerGanttToToday()">回到今天</button>
+            <button class="secondary" onclick="centerGanttToEarliestOverdue()">定位最早逾期</button>
+          </div>
+          <div id="ganttQuickTags" class="muted" style="margin-top:8px;">正在加载标签...</div>
+          <div id="ganttResultSummary" class="gantt-result-summary muted">筛选结果将在查询后显示</div>
+        </div>
+        <div class="gantt-density-bar">
+          <span class="gantt-density-label">刻度密度：</span>
+          <button class="gantt-density-btn active" data-density="1" onclick="setGanttDensity('1')">日</button>
+          <button class="gantt-density-btn" data-density="3" onclick="setGanttDensity('3')">3天</button>
+          <button class="gantt-density-btn" data-density="7" onclick="setGanttDensity('7')">周</button>
+        </div>
+        <div class="gantt-board-shell">
+          <div id="ganttBoard" class="muted">V1-第1步已完成：菜单与顶部筛选框架已就位，甘特图主视图开发中。</div>
+          <div class="gantt-phantom-scroll-track" id="ganttPhantomScrollTrack">
+            <div class="gantt-phantom-scroll-inner" id="ganttPhantomScrollInner"></div>
+          </div>
+        </div>
+      </div>
+
       <div class="card hidden" id="sectionCreate">
         <h3>创建主任务</h3>
         <input id="name" placeholder="任务名称" />
@@ -158,6 +872,19 @@
           <div class="muted" style="align-self:center;">优先级（P0最紧急）</div>
         </div>
         <div class="row">
+          <select id="department">
+            <option value="产品">产品</option>
+            <option value="前端">前端</option>
+            <option value="后端" selected>后端</option>
+            <option value="安卓">安卓</option>
+            <option value="iOS">iOS</option>
+            <option value="运维">运维</option>
+            <option value="运营">运营</option>
+            <option value="QA">QA</option>
+          </select>
+          <div class="muted" style="align-self:center;">部门（取值同账号职位）</div>
+        </div>
+        <div class="row">
           <input id="ccList" placeholder="抄送（可选，逗号分隔）如 @pm,@qa" />
           <div></div>
         </div>
@@ -166,7 +893,7 @@
         <textarea id="note" placeholder="备注（可选）"></textarea>
         <button id="createTaskBtn" onclick="createTask()">创建主任务</button>
         <div class="muted" style="margin-top:6px;white-space:pre-line;">命令模板：
-/task 创建主任务 名称=... 类型=新需求|bug修复|优化 文档=https://... 提出人=@xxx 抄送=@a,@b 开始时间=YYYY-MM-DD HH:mm 结束时间=YYYY-MM-DD HH:mm 项目=18game</div>
+/task 创建主任务 名称=... 类型=新需求|bug修复|优化 部门=后端 文档=https://... 提出人=@xxx 抄送=@a,@b 开始时间=YYYY-MM-DD HH:mm 结束时间=YYYY-MM-DD HH:mm 项目=18game</div>
         <div id="createResult" class="muted"></div>
       </div>
 
@@ -182,7 +909,7 @@
   </div>
 
   <div id="appModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:9999;">
-    <div style="background:#fff;width:min(720px,92vw);max-height:80vh;overflow:auto;border-radius:12px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
+    <div style="background:#fff;width:min(920px,94vw);max-height:92vh;overflow:auto;border-radius:18px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,.2)">
       <h3 id="appModalTitle" style="margin-top:0"></h3>
       <div id="appModalBody"></div>
       <div id="appModalActions" style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end"></div>
@@ -193,6 +920,25 @@
 let token = localStorage.getItem('task_token') || '';
 let currentUser = null;
 let creatingTask = false;
+let currentSection = 'tasks';
+let sidebarCollapsed = localStorage.getItem('task_sidebar_collapsed') === '1';
+
+function applySidebarState() {
+  if (!app) return;
+  app.classList.toggle('sidebar-collapsed', !!sidebarCollapsed);
+  const btn = document.getElementById('menuCollapseBtn');
+  if (btn) {
+    const label = btn.querySelector('.menu-label');
+    if (label) label.textContent = sidebarCollapsed ? '展开' : '收起';
+    btn.title = sidebarCollapsed ? '展开菜单' : '收起菜单';
+  }
+}
+
+function toggleSidebar() {
+  sidebarCollapsed = !sidebarCollapsed;
+  localStorage.setItem('task_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
+  applySidebarState();
+}
 
 function isAdminRole(role) {
   return role === 'admin' || role === 'superadmin';
@@ -270,6 +1016,33 @@ async function ensureAccountsLoaded(q = '') {
   }
   accountCache = Array.isArray(ret) ? ret : [];
   return accountCache;
+}
+
+const DEFAULT_DEPARTMENTS = ['产品', '前端', '后端', '安卓', 'iOS', '运维', '运营', 'QA'];
+
+function getDepartmentOptions() {
+  const values = new Set(DEFAULT_DEPARTMENTS);
+  (accountCache || []).forEach(a => {
+    const pos = String(a?.position || a?.department || '').trim();
+    if (pos) values.add(pos);
+  });
+  return Array.from(values).sort((a, b) => {
+    const ai = DEFAULT_DEPARTMENTS.indexOf(a);
+    const bi = DEFAULT_DEPARTMENTS.indexOf(b);
+    if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    return a.localeCompare(b, 'zh-CN');
+  });
+}
+
+function populateDepartmentFilters() {
+  const html = '<option value="">部门（全部）</option>' + getDepartmentOptions().map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('');
+  ['filterDepartment', 'filterDepartmentHistory', 'weeklyDept'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const prev = el.value;
+    el.innerHTML = html;
+    if (prev && getDepartmentOptions().includes(prev)) el.value = prev;
+  });
 }
 
 function applyAccountDatalist(input, listId = 'accountCandidates') {
@@ -368,7 +1141,68 @@ function canOperateSubtaskClient(s) {
   return !!me && !!assignee && me === assignee;
 }
 
-function renderSubtaskRows(taskNo, subtasks = []) {
+function parseClientTime(v) {
+  const s = String(v || '').trim();
+  if (!s) return NaN;
+  const n = Date.parse(s.includes('T') ? s : s.replace(' ', 'T'));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function subtaskVisualState(s = {}, parentTaskStatus = '') {
+  const statusRaw = String(s.status || '').trim();
+  const status = statusRaw.toLowerCase();
+
+  const canceled = status.includes('取消') || status.includes('cancel');
+  if (canceled) {
+    return { cls: '', label: '' };
+  }
+
+  const done = status.includes('完成') || status.includes('done') || status.includes('complete');
+  if (done || s.completedAt) {
+    return { cls: 'subtask-row-done', label: '' };
+  }
+
+  const parentInProgress = parentTaskStatus === '处理中' || parentTaskStatus === '进行中';
+  const shouldMonitorOverdue = parentInProgress && (statusRaw === '待处理' || statusRaw === '进行中');
+  if (!shouldMonitorOverdue) {
+    return { cls: '', label: '' };
+  }
+
+  const dueTs = parseClientTime(s.dueAt);
+  const overdue = Number.isFinite(dueTs) && Date.now() > dueTs;
+  if (overdue) {
+    return { cls: 'subtask-row-overdue', label: '进行中-已逾期' };
+  }
+  return { cls: 'subtask-row-ok', label: '' };
+}
+
+function renderSubtaskImages(s = {}) {
+  const atts = Array.isArray(s.attachments) ? s.attachments.slice(0, 3) : [];
+  const links = atts.map((a, idx) => {
+    const src = escHtml(a.viewUrl || a.url || a.path || '');
+    if (!src) return '';
+    const encodedSrc = encodeURIComponent(a.viewUrl || a.url || a.path || '');
+    const encodedTitle = encodeURIComponent(`子任务 #${Number(s.id) || ''} 附件图片 ${idx + 1}`);
+    return `<button type="button" class="subtask-attachment-link" onclick="previewSubtaskImage(decodeURIComponent('${encodedSrc}'), decodeURIComponent('${encodedTitle}'))">📎 附件图片${atts.length > 1 ? idx + 1 : ''}</button>`;
+  }).filter(Boolean);
+  if (!links.length) return '';
+  return `<div class="subtask-images">${links.join('')}</div>`;
+}
+
+async function previewSubtaskImage(src, title='附件图片') {
+  const safeSrc = escHtml(src || '');
+  if (!safeSrc) return;
+  await showModal({
+    title,
+    bodyHtml: `<div style="text-align:center;"><img class="attachment-preview-img" src="${safeSrc}" alt="附件图片" /></div>`,
+    actions: [
+      { text: '关闭', value: null },
+      { text: '新窗口打开', value: 'open' }
+    ]
+  }).then(v => { if (v === 'open') window.open(safeSrc, '_blank'); });
+}
+
+function renderSubtaskRows(taskNo, subtasks = [], parentTaskStatus = '') {
   if (!Array.isArray(subtasks) || !subtasks.length) {
     return '<tr><td colspan="11" class="muted">暂无子任务</td></tr>';
   }
@@ -381,14 +1215,15 @@ function renderSubtaskRows(taskNo, subtasks = []) {
       ? `<button class="btn-sm" style="float:right;" onclick="deleteSubtaskConfirm(${Number(s.id)},'${String(taskNo).replace(/'/g, "&#39;")}')">删除</button>`
       : '';
     const actionBtns = canOp
-      ? `${adminDeleteBtn}${adminEditBtn}<button class="btn-sm" onclick="operateSubtaskPrompt(${Number(s.id)},'${String(taskNo).replace(/'/g, "&#39;")}')">处理子任务</button><button class="btn-sm" onclick="subtaskRemarkPrompt(${Number(s.id)})">添加备注</button>`
+      ? `${adminDeleteBtn}${adminEditBtn}<button class="btn-sm" onclick="operateSubtaskPrompt(${Number(s.id)},'${String(taskNo).replace(/'/g, "&#39;")}')">处理子任务</button><button class="btn-sm" onclick="subtaskRemarkPrompt(${Number(s.id)},'${String(taskNo).replace(/'/g, "&#39;")}')">添加备注</button>`
       : (adminDeleteBtn || adminEditBtn || '<span class="muted">仅管理员/负责人可操作</span>');
+    const visual = subtaskVisualState(s, parentTaskStatus);
     return `
-    <tr>
+    <tr class="${visual.cls}">
       <td>${i + 1}</td>
       <td>#${s.id}</td>
       <td>${escHtml(s.title || '-')}</td>
-      <td>${escHtml(s.description || '-')}</td>
+      <td><div>${escHtml(s.description || '-')}</div>${renderSubtaskImages(s)}</td>
       <td>${escHtml(s.latestNote || '-')}</td>
       <td>${escHtml(s.assignee || '-')}</td>
       <td>${escHtml(s.status || '-')}</td>
@@ -402,33 +1237,49 @@ function renderSubtaskRows(taskNo, subtasks = []) {
 }
 
 
-function renderSubtaskPanel(taskNo, subtasks = [], defaultExpanded = false) {
+function renderSubtaskPanel(taskNo, subtasks = [], defaultExpanded = false, parentTaskStatus = '') {
   const safeId = `subtasks_${String(taskNo || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-  const expanded = defaultExpanded ? 'true' : 'false';
-  const display = defaultExpanded ? 'block' : 'none';
-  const label = defaultExpanded ? '收起子任务' : '展开子任务';
+  const openId = `${safeId}_open`;
+  const doneId = `${safeId}_done`;
+  const openList = (subtasks || []).filter(s => String(s.status || '').trim() !== '已完成');
+  const doneList = (subtasks || []).filter(s => String(s.status || '').trim() === '已完成');
   return `
-    <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
-      <b>子任务（${subtasks.length}）</b>
-      <button class="btn-sm" id="btn_${safeId}" onclick="toggleSubtasks('${safeId}')">${label}</button>
-    </div>
-    <div id="${safeId}" data-expanded="${expanded}" style="display:${display};margin-top:6px;">
-      <table>
-        <thead><tr><th>序号</th><th>ID</th><th>标题</th><th>描述</th><th>备注</th><th>负责人</th><th>状态</th><th>开始</th><th>到期</th><th>完成</th><th>操作</th></tr></thead>
-        <tbody>${renderSubtaskRows(taskNo, subtasks)}</tbody>
-      </table>
+    <div class="subtask-panel">
+      <div class="subtask-section-title"><b>子任务（${subtasks.length}）</b></div>
+
+      <div class="subtask-section-title">
+        <b>进行中子任务（${openList.length}）</b>
+        <button class="btn-sm" id="btn_${openId}" onclick="toggleSubtasks('${openId}','进行中子任务')">收起</button>
+      </div>
+      <div id="${openId}" data-expanded="true" style="display:block;margin-top:4px;">
+        <table>
+          <thead><tr><th>序号</th><th>ID</th><th>标题</th><th>描述</th><th>备注</th><th>负责人</th><th>状态</th><th>开始</th><th>到期</th><th>完成</th><th>操作</th></tr></thead>
+          <tbody>${renderSubtaskRows(taskNo, openList, parentTaskStatus)}</tbody>
+        </table>
+      </div>
+
+      <div class="subtask-section-title" style="margin-top:7px;">
+        <b>已完成子任务（${doneList.length}）</b>
+        <button class="btn-sm" id="btn_${doneId}" onclick="toggleSubtasks('${doneId}','已完成子任务')">展开</button>
+      </div>
+      <div id="${doneId}" data-expanded="false" style="display:none;margin-top:4px;">
+        <table>
+          <thead><tr><th>序号</th><th>ID</th><th>标题</th><th>描述</th><th>备注</th><th>负责人</th><th>状态</th><th>开始</th><th>到期</th><th>完成</th><th>操作</th></tr></thead>
+          <tbody>${renderSubtaskRows(taskNo, doneList, parentTaskStatus)}</tbody>
+        </table>
+      </div>
     </div>
   `;
 }
 
-function toggleSubtasks(panelId) {
+function toggleSubtasks(panelId, label='子任务') {
   const panel = document.getElementById(panelId);
   const btn = document.getElementById(`btn_${panelId}`);
   if (!panel) return;
   const expanded = panel.getAttribute('data-expanded') === 'true';
   panel.setAttribute('data-expanded', expanded ? 'false' : 'true');
   panel.style.display = expanded ? 'none' : 'block';
-  if (btn) btn.textContent = expanded ? '展开子任务' : '收起子任务';
+  if (btn) btn.textContent = expanded ? '展开' : '收起';
 }
 
 async function modalAlert(message, title='提示') {
@@ -483,28 +1334,955 @@ async function modalSelect({ title='选择', label='请选择', value='', option
 }
 
 function showSection(name) {
+  currentSection = name;
   sectionTasks.classList.add('hidden');
   sectionHistory.classList.add('hidden');
   sectionDashboard.classList.add('hidden');
+  sectionWeeklyReport.classList.add('hidden');
   sectionPersonal.classList.add('hidden');
+  sectionGantt.classList.add('hidden');
   sectionCreate.classList.add('hidden');
   sectionAdmin.classList.add('hidden');
-  menuTasks.classList.remove('active');
-  menuHistory.classList.remove('active');
-  menuDashboard.classList.remove('active');
-  menuPersonal.classList.remove('active');
-  menuCreate.classList.remove('active');
-  menuAdmin.classList.remove('active');
 
-  if (name === 'tasks') { sectionTasks.classList.remove('hidden'); menuTasks.classList.add('active'); loadTasks(); }
-  if (name === 'history') { sectionHistory.classList.remove('hidden'); menuHistory.classList.add('active'); loadHistory(); }
-  if (name === 'dashboard') { sectionDashboard.classList.remove('hidden'); menuDashboard.classList.add('active'); if (!dashFrom.value && !dashTo.value) onDashboardRangeChange(); loadDashboard(); }
-  if (name === 'personal') { sectionPersonal.classList.remove('hidden'); menuPersonal.classList.add('active'); if (!pdashFrom.value && !pdashTo.value) onPersonalRangeChange(); loadPersonalDashboard(); }
+  const allMenus = [menuTasks, menuHistory, menuDashboard, menuWeeklyReport, menuPersonal, menuGantt, menuAdmin];
+  allMenus.forEach(m => {
+    if (!m) return;
+    m.classList.remove('active');
+    m.removeAttribute('aria-current');
+  });
+
+  if (name === 'tasks') { sectionTasks.classList.remove('hidden'); menuTasks.classList.add('active'); menuTasks.setAttribute('aria-current', 'page'); loadTasks(); }
+  if (name === 'history') { sectionHistory.classList.remove('hidden'); menuHistory.classList.add('active'); menuHistory.setAttribute('aria-current', 'page'); loadHistory(); }
+  if (name === 'dashboard') { sectionDashboard.classList.remove('hidden'); menuDashboard.classList.add('active'); menuDashboard.setAttribute('aria-current', 'page'); if (!dashFrom.value && !dashTo.value) onDashboardRangeChange(); loadDashboard(); }
+  if (name === 'weeklyReport') { sectionWeeklyReport.classList.remove('hidden'); menuWeeklyReport.classList.add('active'); menuWeeklyReport.setAttribute('aria-current', 'page'); ensureWeeklyMonthDefault(); loadWeeklyReport(); }
+  if (name === 'personal') { sectionPersonal.classList.remove('hidden'); menuPersonal.classList.add('active'); menuPersonal.setAttribute('aria-current', 'page'); if (!pdashFrom.value && !pdashTo.value) onPersonalRangeChange(); loadPersonalDashboard(); }
+  if (name === 'gantt') { sectionGantt.classList.remove('hidden'); menuGantt.classList.add('active'); menuGantt.setAttribute('aria-current', 'page'); loadGanttStep1(); }
   if (name === 'create') {
     sectionCreate.classList.remove('hidden');
-    menuCreate.classList.add('active');
   }
-  if (name === 'admin') { sectionAdmin.classList.remove('hidden'); menuAdmin.classList.add('active'); }
+  if (name === 'admin') { sectionAdmin.classList.remove('hidden'); menuAdmin.classList.add('active'); menuAdmin.setAttribute('aria-current', 'page'); }
+}
+
+async function refreshCurrentListKeepScroll() {
+  const y = window.scrollY;
+  if (currentSection === 'history') await loadHistory();
+  else await loadTasks();
+  requestAnimationFrame(() => window.scrollTo(0, y));
+}
+
+let ganttTagState = {
+  deptOptions: [],
+  assigneeOptions: [],
+  selectedDept: '',
+  selectedAssignee: '',
+  selectedDepts: new Set(),      // multi-select
+  selectedAssignees: new Set(),  // multi-select
+  selectedStatuses: new Set()    // status chip multi-select
+};
+let ganttRenderState = { minTs: NaN, maxTs: NaN, timelineWidth: 0 };
+let ganttDensityOverride = '1'; // '1'|'3'|'7'
+
+function setGanttDensity(v) {
+  ganttDensityOverride = v;
+  document.querySelectorAll('.gantt-density-btn').forEach(b => b.classList.toggle('active', b.dataset.density === v));
+  // re-render if data is available
+  if (Number.isFinite(ganttRenderState.minTs)) {
+    loadGanttStep1();
+  }
+}
+
+function bindGanttColResize() {
+  const resizer = ganttBoard.querySelector('#ganttColResizer');
+  const frame = ganttBoard.querySelector('.gantt-frame');
+  if (!resizer || !frame) return;
+  let startX = 0, startW = 0;
+  resizer.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const col = parseInt(getComputedStyle(frame).getPropertyValue('--label-col'), 10) || 240;
+    startX = e.clientX;
+    startW = col;
+    frame.classList.add('gantt-col-resizing');
+    const onMove = ev => {
+      const delta = ev.clientX - startX;
+      const newW = Math.min(420, Math.max(160, startW + delta));
+      frame.style.setProperty('--label-col', newW + 'px');
+      requestAnimationFrame(syncGanttRowHeights);
+    };
+    const onUp = () => {
+      frame.classList.remove('gantt-col-resizing');
+      syncGanttRowHeights();
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function syncPhantomScroll(bodyVp) {
+  const track = document.getElementById('ganttPhantomScrollTrack');
+  const inner = document.getElementById('ganttPhantomScrollInner');
+  if (!track || !inner || !bodyVp) return;
+  inner.style.width = bodyVp.scrollWidth + 'px';
+  let syncing = false;
+  bodyVp.addEventListener('scroll', () => {
+    if (syncing) return;
+    syncing = true;
+    track.scrollLeft = bodyVp.scrollLeft;
+    syncing = false;
+  }, { passive: true });
+  track.addEventListener('scroll', () => {
+    if (syncing) return;
+    syncing = true;
+    bodyVp.scrollLeft = track.scrollLeft;
+    syncing = false;
+  }, { passive: true });
+}
+
+function syncGanttTagStateFromSelects() {
+  ganttTagState.selectedDept = (ganttDept?.value || '').trim();
+  ganttTagState.selectedAssignee = (ganttAssignee?.value || '').trim();
+  // sync multi-select sets from current single-select
+  if (ganttTagState.selectedDept) ganttTagState.selectedDepts = new Set([ganttTagState.selectedDept]);
+  if (ganttTagState.selectedAssignee) ganttTagState.selectedAssignees = new Set([ganttTagState.selectedAssignee]);
+}
+
+const STATUS_CHIPS = ['进行中', '处理中', '待处理', '已完成', '已取消'];
+
+function buildGanttQuickTags() {
+  const mkChips = (items, selectedSet, kind) => {
+    const all = items.map(({ value, count }) => {
+      const active = selectedSet.has(value);
+      return `<button class="quick-tag ${active ? 'active' : ''}" onclick="toggleGanttTagMulti('${kind}','${escHtml(value)}')">${escHtml(value)}<span class="quick-tag-count">(${count})</span></button>`;
+    }).join('');
+    const allSel = items.length > 0 && items.every(o => selectedSet.has(o.value));
+    return `${all}
+      <button class="quick-tag secondary-tag" onclick="ganttChipSelectAll('${kind}')" title="全选">全选</button>
+      <button class="quick-tag secondary-tag" onclick="ganttChipInvert('${kind}')" title="反选">反选</button>
+      <button class="quick-tag secondary-tag" onclick="ganttChipClear('${kind}')" title="清空">清空</button>`;
+  };
+
+  const deptHtml = mkChips(ganttTagState.deptOptions, ganttTagState.selectedDepts, 'dept');
+  const assigneeHtml = mkChips(ganttTagState.assigneeOptions, ganttTagState.selectedAssignees, 'assignee');
+
+  const statusHtml = STATUS_CHIPS.map(s => {
+    const active = ganttTagState.selectedStatuses.has(s);
+    return `<button class="quick-tag ${active ? 'active' : ''}" onclick="toggleGanttTagMulti('status','${escHtml(s)}')">${escHtml(s)}</button>`;
+  }).join('') + `
+    <button class="quick-tag secondary-tag" onclick="ganttChipClear('status')">清空</button>`;
+
+  ganttQuickTags.innerHTML = `
+    <div class="quick-tag-group">
+      <div class="quick-tag-label">主任务状态</div>
+      <div class="quick-tag-list">${statusHtml}</div>
+    </div>
+    <div class="quick-tag-group">
+      <div class="quick-tag-label">部门标签</div>
+      <div class="quick-tag-list">${deptHtml || '<span class="muted">暂无</span>'}</div>
+    </div>
+    <div class="quick-tag-group">
+      <div class="quick-tag-label">人员标签</div>
+      <div class="quick-tag-list">${assigneeHtml || '<span class="muted">暂无</span>'}</div>
+    </div>
+    <div style="margin-top:8px;"><button class="quick-tag" onclick="clearGanttTagFilters()">清空全部筛选</button></div>
+  `;
+}
+
+function toggleGanttTagMulti(kind, value) {
+  const v = String(value || '').trim();
+  if (!v) return;
+  const setMap = { dept: 'selectedDepts', assignee: 'selectedAssignees', status: 'selectedStatuses' };
+  const s = ganttTagState[setMap[kind]];
+  if (!s) return;
+  if (s.has(v)) s.delete(v); else s.add(v);
+  // sync single-select dropdowns (take first selected or '')
+  if (kind === 'dept') {
+    const first = [...ganttTagState.selectedDepts][0] || '';
+    if (ganttDept) ganttDept.value = first;
+    ganttTagState.selectedDept = first;
+  }
+  if (kind === 'assignee') {
+    const first = [...ganttTagState.selectedAssignees][0] || '';
+    if (ganttAssignee) ganttAssignee.value = first;
+    ganttTagState.selectedAssignee = first;
+  }
+  buildGanttQuickTags();
+  loadGanttStep1(false);
+}
+
+function ganttChipSelectAll(kind) {
+  const setMap = { dept: ['selectedDepts', 'deptOptions'], assignee: ['selectedAssignees', 'assigneeOptions'] };
+  if (!setMap[kind]) return;
+  const [setKey, optKey] = setMap[kind];
+  ganttTagState[setKey] = new Set(ganttTagState[optKey].map(o => o.value));
+  buildGanttQuickTags();
+  loadGanttStep1(false);
+}
+
+function ganttChipInvert(kind) {
+  const setMap = { dept: ['selectedDepts', 'deptOptions'], assignee: ['selectedAssignees', 'assigneeOptions'] };
+  if (!setMap[kind]) return;
+  const [setKey, optKey] = setMap[kind];
+  const all = ganttTagState[optKey].map(o => o.value);
+  const cur = ganttTagState[setKey];
+  ganttTagState[setKey] = new Set(all.filter(v => !cur.has(v)));
+  buildGanttQuickTags();
+  loadGanttStep1(false);
+}
+
+function ganttChipClear(kind) {
+  const setMap = { dept: 'selectedDepts', assignee: 'selectedAssignees', status: 'selectedStatuses' };
+  if (ganttTagState[setMap[kind]]) ganttTagState[setMap[kind]] = new Set();
+  buildGanttQuickTags();
+  loadGanttStep1(false);
+}
+
+function applyGanttSelectOptions(kind, options = [], selected = '') {
+  const target = kind === 'dept' ? ganttDept : ganttAssignee;
+  if (!target) return;
+  const defaultText = kind === 'dept' ? '部门（全部）' : '负责人（全部）';
+  target.innerHTML = `<option value="">${defaultText}</option>` + options.map(o => `<option value="${escHtml(o.value)}">${escHtml(o.value)} (${o.count})</option>`).join('');
+  target.value = selected || '';
+}
+
+function aggregateGanttTags(tasks = [], accounts = []) {
+  const deptMap = new Map();
+  const assigneeCountMap = new Map();
+  (tasks || []).forEach(t => {
+    const dept = String(t.department || '').trim();
+    if (dept) deptMap.set(dept, (deptMap.get(dept) || 0) + 1);
+    const subtasks = Array.isArray(t.subtasks) ? t.subtasks : [];
+    subtasks.forEach(s => {
+      const assignee = String(s.assignee || '').trim();
+      if (assignee) assigneeCountMap.set(assignee, (assigneeCountMap.get(assignee) || 0) + 1);
+    });
+  });
+
+  // 人员标签以账号管理（/accounts/suggest）为准；计数仅用于显示该账号在当前任务数据中的出现次数
+  const assigneeOptions = (Array.isArray(accounts) ? accounts : [])
+    .map(a => {
+      const value = String(a?.tgUsername || (a?.username ? `@${a.username}` : '')).trim();
+      if (!value) return null;
+      return { value, count: assigneeCountMap.get(value) || 0 };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'zh-CN'));
+
+  const toSorted = map => Array.from(map.entries()).map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count || a.value.localeCompare(b.value, 'zh-CN'));
+  return { deptOptions: toSorted(deptMap), assigneeOptions };
+}
+
+function onGanttSelectChange(kind) {
+  syncGanttTagStateFromSelects();
+  buildGanttQuickTags();
+  loadGanttStep1(false);
+}
+
+function toggleGanttTag(kind, value) {
+  const v = String(value || '').trim();
+  if (!v) return;
+  if (kind === 'dept') ganttDept.value = ganttDept.value === v ? '' : v;
+  if (kind === 'assignee') ganttAssignee.value = ganttAssignee.value === v ? '' : v;
+  syncGanttTagStateFromSelects();
+  buildGanttQuickTags();
+  loadGanttStep1(false);
+}
+
+function clearGanttTagFilters() {
+  ganttDept.value = '';
+  ganttAssignee.value = '';
+  syncGanttTagStateFromSelects();
+  buildGanttQuickTags();
+  loadGanttStep1(false);
+}
+
+function parseDateSafe(v = '') {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  const s = String(v || '').trim();
+  if (!s) return NaN;
+  const ts = Date.parse(s.includes('T') ? s : s.replace(' ', 'T'));
+  return Number.isFinite(ts) ? ts : NaN;
+}
+
+function fmtDateShort(v = '') {
+  const ts = parseDateSafe(v);
+  if (!Number.isFinite(ts)) return '-';
+  const d = new Date(ts);
+  const p = x => String(x).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function calcBusinessDurationMs(startAt = '', endAt = '') {
+  const s = parseDateSafe(startAt);
+  const e = parseDateSafe(endAt);
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return null;
+  let total = 0;
+  let cursor = new Date(s);
+  while (cursor.getTime() < e) {
+    const dayStart = new Date(cursor.getTime());
+    dayStart.setHours(0, 0, 0, 0);
+    const nextDay = new Date(dayStart.getTime());
+    nextDay.setDate(nextDay.getDate() + 1);
+    const segmentEnd = Math.min(nextDay.getTime(), e);
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) total += Math.max(0, segmentEnd - cursor.getTime());
+    cursor = new Date(segmentEnd);
+  }
+  return total;
+}
+
+function formatBusinessDuration(ms, compactDays = false) {
+  if (ms === null) return '-';
+  if (compactDays) return `${(ms / 86400000).toFixed(1)}天`;
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor((ms % 86400000) / 3600000);
+  return `${d}天${h}小时`;
+}
+
+function calcDurationDays(startAt = '', endAt = '') {
+  return formatBusinessDuration(calcBusinessDurationMs(startAt, endAt), true);
+}
+
+function buildTaskDateRange(task = {}) {
+  const start = task.currentResponsibleReceivedAt || task.startTime || task.createdAt || '';
+  const end = task.dueAt || task.endTime || task.completedAt || '';
+  return { start, end };
+}
+
+function hitDateRange(startAt = '', endAt = '', fromTs = NaN, toTs = NaN) {
+  if (!Number.isFinite(fromTs) && !Number.isFinite(toTs)) return true;
+  const s = parseDateSafe(startAt);
+  const e = parseDateSafe(endAt);
+  if (!Number.isFinite(s) && !Number.isFinite(e)) return false;
+  const rangeStart = Number.isFinite(s) ? s : e;
+  const rangeEnd = Number.isFinite(e) ? e : s;
+  if (Number.isFinite(fromTs) && rangeEnd < fromTs) return false;
+  if (Number.isFinite(toTs) && rangeStart > toTs) return false;
+  return true;
+}
+
+function normalizeTimelineState(status = '') {
+  const s = String(status || '').trim();
+  if (!s) return 'na';
+  if (/取消|cancel/i.test(s)) return 'cancel';
+  if (/完成|done|complete/i.test(s)) return 'done';
+  if (/进行中|处理中|待处理|待启动|wip|in[_ -]?progress/i.test(s)) return 'wip';
+  return 'na';
+}
+
+function deriveSubtaskWindow(s = {}) {
+  const status = String(s.status || '').trim();
+  const done = /完成|done|complete/i.test(status) || !!s.completedAt;
+  const start = s.startAt || s.receivedAt || '';
+  const due = s.dueAt || s.endAt || '';
+  const completed = s.completedAt || '';
+  const end = done ? (completed || due) : (due || completed);
+  return { start, end, due, completed, done };
+}
+
+function normalizeGanttSubtaskRange(s = {}) {
+  const w = deriveSubtaskWindow(s);
+  const startTs = parseDateSafe(w.start);
+  const endTs = parseDateSafe(w.end);
+  if (!Number.isFinite(startTs) && !Number.isFinite(endTs)) return null;
+  let from = Number.isFinite(startTs) ? startTs : endTs;
+  let to = Number.isFinite(endTs) ? endTs : startTs;
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  if (to < from) to = from;
+  return { from, to, ...w };
+}
+
+function fmtDayLabel(ts) {
+  const d = new Date(ts);
+  const p = x => String(x).padStart(2, '0');
+  return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+
+function fmtMonthLabel(ts) {
+  const d = new Date(ts);
+  const p = x => String(x).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}`;
+}
+
+function clamp(v, min, max) {
+  return Math.min(max, Math.max(min, v));
+}
+
+function formatGanttTooltip(s = {}, r = null) {
+  const status = s.status || '未标记';
+  const title = s.title || '-';
+  const assignee = s.assignee || '-';
+  const start = r ? fmtDateShort(r.from) : '-';
+  const end = r ? fmtDateShort(r.to) : '-';
+  const due = r?.due ? fmtDateShort(r.due) : (s.dueAt ? fmtDateShort(s.dueAt) : '-');
+  const dur = r ? calcDurationDays(r.from, r.to) : '-';
+  return `子任务：${title}\n负责人：${assignee}\n状态：${status}\n开始：${start}\n结束：${end}\n到期：${due}\n持续：${dur}`;
+}
+
+function ensureGanttTooltipEl() {
+  let tip = document.getElementById('ganttTooltip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'ganttTooltip';
+    tip.className = 'gantt-tooltip hidden';
+    document.body.appendChild(tip);
+  }
+  return tip;
+}
+
+function bindGanttTooltip() {
+  const tip = ensureGanttTooltipEl();
+  const bars = ganttBoard.querySelectorAll('.gantt-bar[data-tip]');
+  const show = (e) => {
+    const text = e.currentTarget?.getAttribute('data-tip') || '';
+    if (!text) return;
+    tip.textContent = text;
+    tip.classList.remove('hidden');
+    const x = (e.clientX || 0) + 12;
+    const y = (e.clientY || 0) + 12;
+    tip.style.left = `${Math.min(window.innerWidth - 340, x)}px`;
+    tip.style.top = `${Math.min(window.innerHeight - 180, y)}px`;
+  };
+  const hide = () => tip.classList.add('hidden');
+  bars.forEach(el => {
+    el.addEventListener('mouseenter', show);
+    el.addEventListener('mousemove', show);
+    el.addEventListener('mouseleave', hide);
+    el.addEventListener('click', show);
+  });
+  const bodyVp = ganttBoard.querySelector('.gantt-body-viewport');
+  (bodyVp || ganttBoard).addEventListener('scroll', hide, { passive: true });
+}
+
+function centerGanttToday(minTs, maxTs, timelineWidth) {
+  const bodyVp = ganttBoard.querySelector('.gantt-body-viewport');
+  if (!bodyVp || bodyVp.dataset.centered === '1') return;
+  const now = Date.now();
+  const safeNow = clamp(now, minTs, maxTs);
+  const ratio = (safeNow - minTs) / Math.max(1, (maxTs - minTs));
+  const x = ratio * timelineWidth;
+  const target = Math.max(0, x - bodyVp.clientWidth / 2);
+  bodyVp.scrollLeft = target;
+  bodyVp.dataset.centered = '1';
+}
+
+function centerGanttToToday() {
+  if (!Number.isFinite(ganttRenderState.minTs) || !Number.isFinite(ganttRenderState.maxTs) || !ganttRenderState.timelineWidth) return;
+  const bodyVp = ganttBoard.querySelector('.gantt-body-viewport');
+  if (!bodyVp) return;
+  const now = Date.now();
+  const safeNow = clamp(now, ganttRenderState.minTs, ganttRenderState.maxTs);
+  const ratio = (safeNow - ganttRenderState.minTs) / Math.max(1, (ganttRenderState.maxTs - ganttRenderState.minTs));
+  const x = ratio * ganttRenderState.timelineWidth;
+  bodyVp.scrollLeft = Math.max(0, x - bodyVp.clientWidth / 2);
+}
+
+function centerGanttToEarliestOverdue() {
+  const bodyVp = ganttBoard.querySelector('.gantt-body-viewport');
+  if (!bodyVp) return;
+  const now = Date.now();
+  const bars = Array.from(ganttBoard.querySelectorAll('.gantt-bar[data-due][data-status]'));
+  const candidates = bars.map(el => {
+    const due = Number(el.dataset.due || NaN);
+    const status = String(el.dataset.status || '').trim();
+    if (!Number.isFinite(due) || due >= now) return null;
+    if (/完成|done|complete|取消|cancel/i.test(status)) return null;
+    const left = Number(el.dataset.left || 0);
+    const width = Number(el.dataset.width || 0);
+    return { el, due, x: left + (width / 2) };
+  }).filter(Boolean).sort((a, b) => a.due - b.due);
+
+  if (!candidates.length) {
+    modalAlert('当前筛选范围内没有未完成的逾期子任务');
+    return;
+  }
+
+  const target = candidates[0];
+  bodyVp.scrollLeft = Math.max(0, target.x - bodyVp.clientWidth / 2);
+  ganttBoard.querySelectorAll('.gantt-bar-focus').forEach(n => n.classList.remove('gantt-bar-focus'));
+  target.el.classList.add('gantt-bar-focus');
+  setTimeout(() => target.el.classList.remove('gantt-bar-focus'), 2000);
+}
+
+function syncGanttRowHeights() {
+  const leftRows = [...ganttBoard.querySelectorAll('.gantt-left-row')];
+  const bodyRows = [...ganttBoard.querySelectorAll('.gantt-body-row')];
+  const n = Math.min(leftRows.length, bodyRows.length);
+  for (let i = 0; i < n; i++) {
+    const left = leftRows[i];
+    const body = bodyRows[i];
+    const track = body.querySelector('.gantt-row-track');
+    [left, body, track].filter(Boolean).forEach(el => {
+      const baseHeight = Number(el.dataset.baseHeight || 44);
+      el.style.height = '';
+      el.style.minHeight = `${baseHeight}px`;
+    });
+    const h = Math.ceil(Math.max(
+      left.scrollHeight,
+      left.offsetHeight,
+      body.scrollHeight,
+      body.offsetHeight,
+      track?.scrollHeight || 0,
+      track?.offsetHeight || 0,
+      44
+    ));
+    left.style.height = `${h}px`;
+    left.style.minHeight = `${h}px`;
+    body.style.height = `${h}px`;
+    body.style.minHeight = `${h}px`;
+    if (track) {
+      track.style.height = `${h}px`;
+      track.style.minHeight = `${h}px`;
+    }
+  }
+}
+
+function bindGanttFrozenSync() {
+  const bodyVp = ganttBoard.querySelector('.gantt-body-viewport');
+  const headInner = ganttBoard.querySelector('.gantt-head-inner');
+  const leftInner = ganttBoard.querySelector('.gantt-left-inner');
+  if (!bodyVp || !headInner || !leftInner || bodyVp.dataset.syncBound === '1') return;
+  bodyVp.dataset.syncBound = '1';
+  const sync = () => {
+    headInner.style.transform = `translateX(${-bodyVp.scrollLeft}px)`;
+    leftInner.style.transform = `translateY(${-bodyVp.scrollTop}px)`;
+  };
+  bodyVp.addEventListener('scroll', sync, { passive: true });
+  sync();
+}
+
+function bindGanttDragScroll() {
+  const bodyVp = ganttBoard.querySelector('.gantt-body-viewport');
+  if (!bodyVp || bodyVp.dataset.dragBound === '1') return;
+  bodyVp.dataset.dragBound = '1';
+  let down = false;
+  let sx = 0;
+  let sy = 0;
+  let sl = 0;
+  let st = 0;
+  bodyVp.addEventListener('mousedown', (e) => {
+    down = true;
+    sx = e.clientX;
+    sy = e.clientY;
+    sl = bodyVp.scrollLeft;
+    st = bodyVp.scrollTop;
+    bodyVp.classList.add('dragging');
+  });
+  window.addEventListener('mouseup', () => {
+    down = false;
+    bodyVp.classList.remove('dragging');
+  });
+  bodyVp.addEventListener('mouseleave', () => {
+    down = false;
+    bodyVp.classList.remove('dragging');
+  });
+  bodyVp.addEventListener('mousemove', (e) => {
+    if (!down) return;
+    bodyVp.scrollLeft = sl - (e.clientX - sx);
+    bodyVp.scrollTop = st - (e.clientY - sy);
+  });
+}
+
+function setGanttResultSummary(filterSummary = '', minTs = NaN, maxTs = NaN) {
+  const el = document.getElementById('ganttResultSummary');
+  if (!el) return;
+  const timeRange = (Number.isFinite(minTs) && Number.isFinite(maxTs))
+    ? `${fmtDateShort(minTs)} ~ ${fmtDateShort(maxTs)}`
+    : '暂无';
+  el.innerHTML = `${filterSummary}<br>时间轴：${escHtml(timeRange)}`;
+}
+
+function renderGanttBoard(groups = [], filterSummary = '', emptyReason = 'filtered') {
+  if (!groups.length) {
+    setGanttResultSummary(filterSummary, NaN, NaN);
+    const emptyMsgMap = {
+      'no-data': '当前没有任何任务数据。',
+      'filtered': '没有符合当前筛选条件的任务。<button class="quick-tag" style="margin-left:8px;" onclick="clearGanttTagFilters()">清空筛选并重查</button>',
+      'narrow-range': '所选时间范围内无可显示任务，请扩大查询范围。<button class="quick-tag" style="margin-left:8px;" onclick="document.getElementById(\'ganttFrom\').value=\'\';document.getElementById(\'ganttTo\').value=\'\';loadGanttStep1(false)">清空时间范围</button>'
+    };
+    ganttBoard.innerHTML = `<div class="gantt-empty">${emptyMsgMap[emptyReason] || emptyMsgMap['filtered']}</div>`;
+    return;
+  }
+
+  const axisRanges = [];
+  const preparedGroups = groups.map(g => {
+    const taskRange = buildTaskDateRange(g.task || {});
+    const taskStartTs = parseDateSafe(taskRange.start);
+    const taskEndTs = parseDateSafe(taskRange.end);
+    const taskBars = (g.subtasks || []).map(s => {
+      const raw = normalizeGanttSubtaskRange(s);
+      let from = raw?.from;
+      let to = raw?.to;
+
+      if (!Number.isFinite(from) && Number.isFinite(taskStartTs)) from = taskStartTs;
+      if (!Number.isFinite(to) && Number.isFinite(taskEndTs)) to = taskEndTs;
+      if (!Number.isFinite(from) && Number.isFinite(to)) from = to;
+      if (!Number.isFinite(to) && Number.isFinite(from)) to = from;
+      if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+      if (to < from) to = from;
+      axisRanges.push({ from, to });
+      return { s, from, to, due: parseDateSafe(raw?.due || '') };
+    }).filter(Boolean);
+    return { task: g.task, bars: taskBars };
+  });
+
+  if (!axisRanges.length) {
+    setGanttResultSummary(filterSummary, NaN, NaN);
+    ganttBoard.innerHTML = `<div class="gantt-empty">已命中主任务，但没有可绘制时间的子任务。</div>`;
+    return;
+  }
+
+  let minTs = Math.min(...axisRanges.map(r => r.from));
+  let maxTs = Math.max(...axisRanges.map(r => r.to));
+  const dayMs = 86400000;
+  const nowTs = Date.now();
+  minTs = Math.min(minTs, nowTs);
+  maxTs = Math.max(maxTs, nowTs);
+  minTs = Math.floor(minTs / dayMs) * dayMs;
+  maxTs = Math.ceil(maxTs / dayMs) * dayMs;
+  if (maxTs <= minTs) maxTs = minTs + dayMs;
+
+  const totalDays = Math.max(1, Math.round((maxTs - minTs) / dayMs));
+  const dayWidth = 36;
+  const timelineWidth = Math.max(600, totalDays * dayWidth);
+
+  const tickStep = Number(ganttDensityOverride) || 1;
+  const dayTicks = [];
+  const monthBlockMap = new Map(); // key -> {label, left, rightX}
+  const todayX = ((clamp(nowTs, minTs, maxTs) - minTs) / (maxTs - minTs)) * timelineWidth;
+
+  for (let i = 0; i <= totalDays; i++) {
+    const ts = minTs + i * dayMs;
+    const x = (i / totalDays) * timelineWidth;
+    const d = new Date(ts);
+    const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2,'0')}`;
+    if (!monthBlockMap.has(monthKey)) {
+      monthBlockMap.set(monthKey, { label: fmtMonthLabel(ts), left: x });
+    }
+    monthBlockMap.get(monthKey).rightX = x;
+
+    if (i < totalDays) {
+      const nextTs = ts + dayMs;
+      const nextKey = (() => { const nd = new Date(nextTs); return `${nd.getUTCFullYear()}-${String(nd.getUTCMonth()+1).padStart(2,'0')}`; })();
+      if (nextKey !== monthKey) monthBlockMap.get(monthKey).rightX = ((i + 1) / totalDays) * timelineWidth;
+    }
+
+    if (i !== 0 && i !== totalDays && i % tickStep !== 0) continue;
+    const isToday = Math.abs(ts - nowTs) < dayMs;
+    const dow = d.getUTCDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const cls = `gantt-tick-day${isToday ? ' is-today' : ''}${isWeekend && !isToday ? ' is-weekend' : ''}`;
+    dayTicks.push(`<div class="${cls}" style="left:${x}px;">${fmtDayLabel(ts)}</div>`);
+  }
+
+  const monthBlocks = [];
+  for (const [, v] of monthBlockMap.entries()) {
+    const w = v.rightX - v.left;
+    monthBlocks.push(`<div class="gantt-tick-month-block" style="left:${v.left}px;width:${Math.max(w, 60)}px;">${escHtml(v.label)}</div>`);
+  }
+
+  const todayLineHtml = `<div class="gantt-today-line" style="left:${todayX}px;" title="今天"></div>`;
+
+  setGanttResultSummary(filterSummary, minTs, maxTs);
+
+  const leftRows = [];
+  const bodyRows = [];
+  preparedGroups.forEach(g => {
+    const taskName = `${g.task?.taskNo || '-'} ${g.task?.name || '-'}`;
+    const laneHeight = Math.max(38, (g.bars.length * 18) + 8);
+    const barsHtml = g.bars.map((b, idx) => {
+      const from = clamp(b.from, minTs, maxTs);
+      const to = clamp(Math.max(b.to, from), minTs, maxTs);
+      const left = ((from - minTs) / (maxTs - minTs)) * timelineWidth;
+      const width = Math.max(2, ((to - from) / (maxTs - minTs)) * timelineWidth);
+      const cls = `gantt-bar-${normalizeTimelineState(b.s.status || '')}`;
+      const tooltip = escHtml(formatGanttTooltip(b.s, { from, to, due: b.due }));
+      const text = `#${b.s.id || '-'} ${b.s.title || '-'}`;
+      return `<div class="gantt-bar ${cls}" style="left:${left}px;width:${width}px;top:${6 + idx * 18}px;" data-tip="${tooltip}" data-left="${left}" data-width="${width}" data-due="${Number.isFinite(b.due) ? b.due : ''}" data-status="${escHtml(b.s.status || '')}">${escHtml(text)}</div>`;
+    }).join('');
+
+    leftRows.push(`<div class="gantt-left-row" data-base-height="${laneHeight}" style="min-height:${laneHeight}px;"><b>${escHtml(taskName)}</b><small>${escHtml(g.task?.department || '-')} ｜ ${escHtml(g.task?.status || '-')}</small></div>`);
+    bodyRows.push(`<div class="gantt-body-row" data-base-height="${laneHeight}" style="min-height:${laneHeight}px;"><div class="gantt-row-track" data-base-height="${laneHeight}" style="min-height:${laneHeight}px;position:relative;">${barsHtml || '<div class="muted" style="padding:8px;">暂无可展示子任务</div>'}<div class="gantt-today-line" style="left:${todayX}px;height:100%;"></div></div></div>`);
+  });
+
+  ganttBoard.innerHTML = `<div class="gantt-frame" style="--label-col:240px;--timeline-width:${timelineWidth}px;--day-width:${dayWidth}px;">
+    <div class="gantt-corner" id="ganttCorner">主任务<div class="gantt-col-resizer" id="ganttColResizer" title="拖拽调整列宽"></div></div>
+    <div class="gantt-head-viewport"><div class="gantt-head-inner"><div class="gantt-time-axis"><div class="gantt-month-axis">${monthBlocks.join('')}</div><div class="gantt-day-axis">${dayTicks.join('')}${todayLineHtml}</div></div></div></div>
+    <div class="gantt-left-viewport"><div class="gantt-left-inner">${leftRows.join('')}</div></div>
+    <div class="gantt-body-viewport"><div class="gantt-body-inner">${bodyRows.join('')}</div></div>
+  </div>`;
+
+  ganttRenderState = { minTs, maxTs, timelineWidth };
+
+  syncGanttRowHeights();
+  requestAnimationFrame(syncGanttRowHeights);
+  bindGanttTooltip();
+  bindGanttFrozenSync();
+  bindGanttDragScroll();
+  centerGanttToday(minTs, maxTs, timelineWidth);
+  const bodyVpEl = ganttBoard.querySelector('.gantt-body-viewport');
+  if (bodyVpEl) syncPhantomScroll(bodyVpEl);
+  bindGanttColResize();
+}
+
+async function loadGanttStep1(refreshTagData = true) {
+  const keyword = (ganttKeyword?.value || '').trim();
+  const dept = (ganttDept?.value || '').trim();
+  const assignee = (ganttAssignee?.value || '').trim();
+  const taskStatus = (ganttTaskStatus?.value || '进行中').trim();
+  const from = (ganttFrom?.value || '').trim();
+  const to = (ganttTo?.value || '').trim();
+  const includeCanceled = !!ganttIncludeCanceled?.checked;
+
+  let detailed = [];
+  try {
+    const qs = new URLSearchParams({ project: (project?.value || '18game').trim() || '18game' });
+    if (taskStatus) qs.set('status', taskStatus === '进行中' ? '处理中' : taskStatus);
+    const list = await request(`/tasks?${qs.toString()}`);
+    for (const t of (Array.isArray(list) ? list : [])) {
+      const d = await request(`/tasks/${t.taskNo}`);
+      detailed.push({ ...t, subtasks: d?.subtasks || [] });
+    }
+  } catch {
+    ganttBoard.innerHTML = '<div class="muted">甘特数据加载失败</div>';
+    const summaryEl = document.getElementById('ganttResultSummary');
+    if (summaryEl) summaryEl.textContent = '筛选结果加载失败';
+    if (refreshTagData) ganttQuickTags.textContent = '标签加载失败';
+    return;
+  }
+
+  if (refreshTagData) {
+    try {
+      const accounts = await ensureAccountsLoaded('');
+      const agg = aggregateGanttTags(detailed, accounts);
+      ganttTagState.deptOptions = agg.deptOptions;
+      ganttTagState.assigneeOptions = agg.assigneeOptions;
+      const selectedDept = agg.deptOptions.some(o => o.value === dept) ? dept : '';
+      const selectedAssignee = agg.assigneeOptions.some(o => o.value === assignee) ? assignee : '';
+      applyGanttSelectOptions('dept', agg.deptOptions, selectedDept);
+      applyGanttSelectOptions('assignee', agg.assigneeOptions, selectedAssignee);
+      syncGanttTagStateFromSelects();
+      buildGanttQuickTags();
+    } catch {
+      ganttQuickTags.textContent = '标签加载失败';
+    }
+  }
+
+  const kw = keyword.toLowerCase();
+  const kwTaskNo = normalizeTaskNoInput(keyword).toLowerCase();
+  const fromTs = parseDateSafe(from ? `${from}T00:00:00` : '');
+  const toTs = parseDateSafe(to ? `${to}T23:59:59` : '');
+  const selectedDept = (ganttDept?.value || '').trim();
+  const selectedAssignee = (ganttAssignee?.value || '').trim();
+  const selectedDepts = ganttTagState.selectedDepts;
+  const selectedAssignees = ganttTagState.selectedAssignees;
+  const selectedStatuses = ganttTagState.selectedStatuses;
+
+  const groups = detailed.map(t => {
+    const taskRange = buildTaskDateRange(t);
+    const taskKeywordHit = !kw || [t.taskNo, t.name, t.requester, t.creator].some(v => {
+      const vv = String(v || '').toLowerCase();
+      return vv.includes(kw) || (!!kwTaskNo && vv.includes(kwTaskNo));
+    });
+    const deptVal = String(t.department || '').trim();
+    const taskDeptHit = selectedDepts.size > 0 ? selectedDepts.has(deptVal) : (!selectedDept || deptVal === selectedDept);
+    const tStatus = String(t.status || '').trim();
+    const taskStatusHit = selectedStatuses.size > 0
+      ? selectedStatuses.has(tStatus) || selectedStatuses.has(tStatus === '处理中' ? '进行中' : tStatus)
+      : (!taskStatus || tStatus === (taskStatus === '进行中' ? '处理中' : taskStatus));
+    const subtasksRaw = Array.isArray(t.subtasks) ? t.subtasks : [];
+    const subtasksFiltered = subtasksRaw.filter(s => {
+      const sStatus = String(s.status || '').trim();
+      if (!includeCanceled && (sStatus === '已取消' || /取消|cancel/i.test(sStatus))) return false;
+      const sAssignee = String(s.assignee || '').trim();
+      if (selectedAssignees.size > 0) { if (!selectedAssignees.has(sAssignee)) return false; }
+      else if (selectedAssignee && sAssignee !== selectedAssignee) return false;
+      if (kw) {
+        const hit = [s.title, s.description, s.assignee, s.id].some(v => String(v || '').toLowerCase().includes(kw));
+        if (!hit && !taskKeywordHit) return false;
+      }
+      const sw = deriveSubtaskWindow(s);
+      if (!hitDateRange(sw.start, sw.end, fromTs, toTs)) return false;
+      return true;
+    });
+
+    const taskDateHit = hitDateRange(taskRange.start, taskRange.end, fromTs, toTs);
+    const keepByTaskOnly = taskDeptHit && taskStatusHit && taskKeywordHit && taskDateHit;
+    const keepBySubtask = taskDeptHit && taskStatusHit && subtasksFiltered.length > 0;
+    if (!keepByTaskOnly && !keepBySubtask) return null;
+    return { task: t, subtasks: subtasksFiltered };
+  }).filter(Boolean);
+
+  // Build interactive summary chips
+  const buildSummaryChip = (label, clearFn) =>
+    `<span class="summary-chip">${escHtml(label)}<button class="summary-chip-x" onclick="${clearFn}" title="清除此筛选">×</button></span>`;
+
+  const summaryChips = [];
+  if (keyword) summaryChips.push(buildSummaryChip(`关键词: ${keyword}`, `document.getElementById('ganttKeyword').value='';loadGanttStep1(false)`));
+  if (selectedDepts.size > 0) summaryChips.push(buildSummaryChip(`部门: ${[...selectedDepts].join(',')}`, `ganttChipClear('dept')`));
+  if (selectedAssignees.size > 0) summaryChips.push(buildSummaryChip(`负责人: ${[...selectedAssignees].join(',')}`, `ganttChipClear('assignee')`));
+  if (selectedStatuses.size > 0) summaryChips.push(buildSummaryChip(`状态: ${[...selectedStatuses].join(',')}`, `ganttChipClear('status')`));
+  if (from || to) summaryChips.push(buildSummaryChip(`时间: ${from || '不限'} ~ ${to || '不限'}`, `document.getElementById('ganttFrom').value='';document.getElementById('ganttTo').value='';loadGanttStep1(false)`));
+
+  const totalGroupsAll = detailed.length;
+  const emptyReason = groups.length === 0
+    ? (totalGroupsAll === 0 ? 'no-data' : summaryChips.length > 0 ? 'filtered' : 'narrow-range')
+    : 'ok';
+
+  const summaryHtml = `<span style="color:#475569;font-size:12px;">共 <b>${groups.length}</b> 个主任务分组</span>${summaryChips.length ? ' &nbsp;' + summaryChips.join(' ') : ''}`;
+  const summaryEl = document.getElementById('ganttResultSummary');
+  if (summaryEl) summaryEl.innerHTML = summaryHtml;
+
+  const summary = `共 ${groups.length} 个主任务分组`;
+  renderGanttBoard(groups, summary, emptyReason);
+  if (summaryEl && Number.isFinite(ganttRenderState.minTs) && Number.isFinite(ganttRenderState.maxTs)) {
+    summaryEl.innerHTML = `${summary}<br>时间轴：${escHtml(fmtDateShort(ganttRenderState.minTs))} ~ ${escHtml(fmtDateShort(ganttRenderState.maxTs))}`;
+  }
+}
+
+
+function ensureWeeklyMonthDefault() {
+  const el = document.getElementById('weeklyMonth');
+  if (!el) return;
+  el.type = 'month';
+  if (!el.value) {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    el.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}`;
+  }
+}
+
+function renderWeeklyReport(data) {
+  const box = document.getElementById('weeklyReportBox');
+  if (!box) return;
+  const weeks = Array.isArray(data?.weeks) ? data.weeks : [];
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const filters = data?.filters || {};
+  const totals = data?.totals || {};
+  if (!weeks.length) {
+    box.innerHTML = '<div class="muted">该月份没有可展示周范围</div>';
+    return;
+  }
+  const summary = `
+    <div class="weekly-report-summary">
+      <span class="chip">月份：${escHtml(filters.month || '-')}</span>
+      <span class="chip">部门：${escHtml(filters.department || '全部')}</span>
+      <span class="chip">责任人：${escHtml(filters.assignee || '全部')}</span>
+      <span class="chip">人数：${Number(totals.people || 0)}</span>
+      <span class="chip">完成：${Number(totals.completed || 0)}</span>
+      <span class="chip">进行中：${Number(totals.inProgress || 0)}</span>
+    </div>`;
+  if (!rows.length) {
+    box.innerHTML = summary + '<div class="muted">当前筛选条件下没有子任务数据</div>';
+    return;
+  }
+  const renderInProgressDetail = (item) => `
+    <div class="weekly-detail-item">
+      <div><b>#${Number(item.id || 0)}</b> ${escHtml(item.title || '-')}</div>
+      <div class="weekly-detail-meta">计划周期：${escHtml(item.plannedCycle || '-')} ｜ 状态：${escHtml(item.displayStatus || item.status || '-')}${item.isOverdueInProgress ? ` ｜ 逾期：${escHtml(item.overdueTime || '-')}` : ''}</div>
+    </div>`;
+  const renderCompletedDetail = (item) => `
+    <div class="weekly-detail-item">
+      <div><b>#${Number(item.id || 0)}</b> ${escHtml(item.title || '-')}</div>
+      <div class="weekly-detail-meta">完成周期：${escHtml(item.completedCycle || '-')} ｜ 状态：${escHtml(item.displayStatus || item.status || '-')} ｜ 逾期：${escHtml(item.overdueTime || '0小时')}</div>
+    </div>`;
+  const uniqTaskCount = (arr = []) => {
+    const s = new Set();
+    (arr || []).forEach(item => {
+      const key = String(item?.taskNo || item?.id || '').trim();
+      if (key) s.add(key);
+    });
+    return s.size;
+  };
+  const renderWeeklyCell = (c = {}, rowUserKey = '', month = '') => {
+    const wip = Array.isArray(c.inProgressDetails) ? c.inProgressDetails : [];
+    const done = Array.isArray(c.completedDetails) ? c.completedDetails : [];
+    const wipTaskCount = uniqTaskCount(wip);
+    const doneTaskCount = uniqTaskCount(done);
+    const meKey = normUserClient(currentUser?.tgUsername || currentUser?.username || '');
+    const canEditNote = !!meKey && !!rowUserKey && meKey === rowUserKey;
+    const note = String(c.note || '');
+    return `
+      <td>
+        <div class="weekly-cell">
+          <div class="weekly-cell-summary"><span class="weekly-wip" title="进行中主任务ID（去重）：${escHtml(Array.from(new Set(wip.map(x => x?.taskNo).filter(Boolean))).join(', ') || '-')}">进行中${Number(wipTaskCount || 0)}</span><span>/</span><span class="weekly-done" title="已完成主任务ID（去重）：${escHtml(Array.from(new Set(done.map(x => x?.taskNo).filter(Boolean))).join(', ') || '-')}">已完成${Number(doneTaskCount || 0)}</span></div>
+          <div style="margin:4px 0 2px;">
+            <textarea class="weekly-note-input" data-month="${escHtml(month)}" data-week-key="${escHtml(c.key || '')}" data-assignee-key="${escHtml(rowUserKey)}" ${canEditNote ? '' : 'disabled'} placeholder="周报备注（失焦自动保存）" style="width:100%;min-height:42px;font-size:11px;resize:vertical;">${escHtml(note)}</textarea>
+          </div>
+          <div class="weekly-detail-block">
+            <div class="weekly-detail-title weekly-wip">进行中任务</div>
+            ${wip.length ? wip.map(renderInProgressDetail).join('') : '<div class="weekly-detail-empty">无</div>'}
+          </div>
+          <div class="weekly-detail-block">
+            <div class="weekly-detail-title weekly-done">已完成任务</div>
+            ${done.length ? done.map(renderCompletedDetail).join('') : '<div class="weekly-detail-empty">无</div>'}
+          </div>
+        </div>
+      </td>`;
+  };
+  const uniqSubtaskCount = (arr = []) => {
+    const s = new Set();
+    (arr || []).forEach(item => {
+      const key = String(item?.id || '').trim();
+      if (key) s.add(key);
+    });
+    return s.size;
+  };
+  const head = `<tr><th>部门</th><th>责任人</th>${weeks.map(w => `<th>${escHtml(w.label || w.key)}</th>`).join('')}<th>合计完成（去重子任务ID）</th></tr>`;
+  const body = rows.map(r => {
+    const allDone = (r.weeks || []).flatMap(c => Array.isArray(c?.completedDetails) ? c.completedDetails : []);
+    const totalDoneUniq = uniqSubtaskCount(allDone);
+    return `
+    <tr>
+      <td>${escHtml(r.department || '-')}</td>
+      <td>${escHtml(r.person || r.assignee || '-')}<div class="muted">${escHtml(r.assignee || '')}</div></td>
+      ${(r.weeks || []).map(c => renderWeeklyCell(c, r.userKey || '', filters.month || '')).join('')}
+      <td class="weekly-done">${Number(totalDoneUniq || 0)}</td>
+    </tr>`;
+  }).join('');
+  box.innerHTML = `${summary}<div class="weekly-report-table-wrap"><table class="weekly-report-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  bindWeeklyNoteInputs();
+}
+
+function bindWeeklyNoteInputs() {
+  document.querySelectorAll('.weekly-note-input').forEach(el => {
+    if (el.dataset.bound === '1') return;
+    el.dataset.bound = '1';
+    el.addEventListener('blur', async () => {
+      if (el.disabled) return;
+      const payload = {
+        month: (el.dataset.month || '').trim(),
+        weekKey: (el.dataset.weekKey || '').trim(),
+        assigneeUserKey: (el.dataset.assigneeKey || '').trim(),
+        note: String(el.value || '')
+      };
+      try {
+        await request('/reports/weekly/note', { method: 'POST', body: JSON.stringify(payload) });
+      } catch (e) {
+        alert(`备注保存失败：${e.message || e}`);
+      }
+    });
+  });
+}
+
+async function loadWeeklyReport() {
+  ensureWeeklyMonthDefault();
+  const box = document.getElementById('weeklyReportBox');
+  if (box) box.textContent = '加载中...';
+  const qs = new URLSearchParams();
+  qs.set('project', document.getElementById('weeklyProject')?.value?.trim() || '18game');
+  const month = document.getElementById('weeklyMonth')?.value?.trim() || '';
+  const dept = document.getElementById('weeklyDept')?.value?.trim() || '';
+  const assignee = document.getElementById('weeklyAssignee')?.value?.trim() || '';
+  if (month) qs.set('month', month);
+  if (dept) qs.set('department', dept);
+  if (assignee) qs.set('assignee', assignee);
+  try {
+    const data = await request(`/reports/weekly?${qs.toString()}`);
+    renderWeeklyReport(data);
+  } catch (e) {
+    if (box) box.textContent = `加载失败：${e.message || e}`;
+  }
 }
 
 async function request(url, method='GET', body) {
@@ -578,6 +2356,7 @@ async function initMe() {
   currentUser = ret;
   loginCard.classList.add('hidden');
   app.classList.remove('hidden');
+  applySidebarState();
   me.innerText = `用户: ${ret.name || ret.username}(${ret.username}) | 角色: ${ret.role} | 绑定TG: ${ret.tgUsername || '-'} `;
 
   if (ret.mustChangePassword) {
@@ -587,8 +2366,10 @@ async function initMe() {
   }
 
   await ensureAccountsLoaded();
+  populateDepartmentFilters();
   applyAccountDatalist(document.getElementById('requester'));
   applyAccountDatalist(document.getElementById('ccList'));
+  applyAccountDatalist(document.getElementById('weeklyAssignee'));
   bindMentionSuggest(document.getElementById('requester'));
   bindMentionSuggest(document.getElementById('ccList'));
   bindTimePicker(document.getElementById('startTime'));
@@ -597,8 +2378,9 @@ async function initMe() {
   bindDatePicker(document.getElementById('dashTo'));
   bindDatePicker(document.getElementById('pdashFrom'));
   bindDatePicker(document.getElementById('pdashTo'));
+  ensureWeeklyMonthDefault();
 
-  menuCreate.classList.remove('hidden');
+  // 主菜单不再展示“新建任务”入口；创建表单代码保留，避免历史链接/内部调用直接报错。
 
   if (isAdminRole(ret.role)) {
     menuAdmin.classList.remove('hidden');
@@ -610,13 +2392,9 @@ async function initMe() {
   const cyEl = document.getElementById('cycleDisplay');
   const recomputeMainCycle = () => {
     if (!stEl || !etEl || !cyEl) return;
-    const s = Date.parse((stEl.value || '').trim().replace(' ', 'T'));
-    const e = Date.parse((etEl.value || '').trim().replace(' ', 'T'));
-    if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) { cyEl.value = ''; return; }
-    const ms = e - s;
-    const d = Math.floor(ms / 86400000);
-    const h = Math.floor((ms % 86400000) / 3600000);
-    cyEl.value = `${d}天${h}小时`;
+    const ms = calcBusinessDurationMs(stEl.value || '', etEl.value || '');
+    if (ms === null) { cyEl.value = ''; return; }
+    cyEl.value = formatBusinessDuration(ms);
   };
   stEl?.addEventListener('input', recomputeMainCycle);
   etEl?.addEventListener('input', recomputeMainCycle);
@@ -727,6 +2505,7 @@ async function createTask() {
       project: (document.getElementById('project')?.value || '').trim() || '18game',
       taskType: (document.getElementById('taskType')?.value || '').trim() || '新需求',
       priority: (document.getElementById('priority')?.value || '').trim() || 'P2',
+      department: (document.getElementById('department')?.value || '').trim() || '后端',
       ccList: (document.getElementById('ccList')?.value || '').trim() || undefined,
       note: (document.getElementById('note')?.value || '').trim() || undefined
     };
@@ -771,6 +2550,22 @@ async function openCreateTaskModal() {
       </div>
     </div>
     <div class="row">
+      <div>
+        <label class="muted">部门</label>
+        <select id="m_department">
+          <option value="产品">产品</option>
+          <option value="前端">前端</option>
+          <option value="后端" selected>后端</option>
+          <option value="安卓">安卓</option>
+          <option value="iOS">iOS</option>
+          <option value="运维">运维</option>
+          <option value="运营">运营</option>
+          <option value="QA">QA</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+    <div class="row">
       <div><label class="muted">抄送（可选，逗号分隔）</label><input id="m_ccList" placeholder="@alice,@bob" /></div>
       <div></div>
     </div>
@@ -810,6 +2605,7 @@ async function openCreateTaskModal() {
     project: (document.getElementById('m_project')?.value || '').trim() || '18game',
     taskType: (document.getElementById('m_taskType')?.value || '').trim() || '新需求',
     priority: (document.getElementById('m_priority')?.value || '').trim() || 'P2',
+    department: (document.getElementById('m_department')?.value || '').trim() || '后端',
     ccList: (document.getElementById('m_ccList')?.value || '').trim() || undefined,
     note: (document.getElementById('m_note')?.value || '').trim() || undefined
   };
@@ -902,8 +2698,7 @@ async function openBatchImportModal() {
   const ret = await request('/tasks/import-batch', 'POST', payload);
   await modalAlert(JSON.stringify(ret, null, 2), ret?.ok ? '导入成功' : '导入失败');
   if (ret?.ok) {
-    loadTasks();
-    loadHistory();
+    refreshCurrentListKeepScroll();
   }
 }
 
@@ -925,49 +2720,60 @@ async function exportAllTasks() {
   modalAlert('导出完成：task.csv 与 subtask.csv 已开始下载');
 }
 
-async function loadTasks() {
+function normalizeTaskNoInput(v = '') {
+  const raw = String(v || '').trim();
+  if (!raw) return '';
+  if (/^\d+$/.test(raw)) return `18G-${raw}`;
+  return raw;
+}
+
+function getTaskListQuery(mode = 'tasks', exactTaskNo = '') {
   const projectVal = project.value || '18game';
-  const creator = (document.getElementById('filterCreator')?.value || '').trim();
-  const requester = (document.getElementById('filterRequester')?.value || '').trim();
-  const subtaskAssignee = (document.getElementById('filterSubtaskAssignee')?.value || '').trim();
-  const taskName = (document.getElementById('filterTaskName')?.value || '').trim();
-  const subtaskName = (document.getElementById('filterSubtaskName')?.value || '').trim();
   const watcher = (currentUser?.tgUsername || currentUser?.username || '').trim();
-  const qs = new URLSearchParams({ project: projectVal, status: '处理中' });
-  if (!isAdminRole(currentUser?.role) && watcher && !creator && !requester && !subtaskAssignee && !taskName && !subtaskName) qs.set('watcher', watcher);
+  const isHistory = mode === 'history';
+  const creator = (document.getElementById(isHistory ? 'filterCreatorHistory' : 'filterCreator')?.value || '').trim();
+  const requester = (document.getElementById(isHistory ? 'filterRequesterHistory' : 'filterRequester')?.value || '').trim();
+  const subtaskAssignee = (document.getElementById(isHistory ? 'filterSubtaskAssigneeHistory' : 'filterSubtaskAssignee')?.value || '').trim();
+  const taskName = (document.getElementById(isHistory ? 'filterTaskNameHistory' : 'filterTaskName')?.value || '').trim();
+  const subtaskName = (document.getElementById(isHistory ? 'filterSubtaskNameHistory' : 'filterSubtaskName')?.value || '').trim();
+  const department = (document.getElementById(isHistory ? 'filterDepartmentHistory' : 'filterDepartment')?.value || '').trim();
+  const taskNo = normalizeTaskNoInput(exactTaskNo || document.getElementById(isHistory ? 'filterTaskNoHistory' : 'filterTaskNo')?.value || '');
+  const subtaskId = (document.getElementById(isHistory ? 'filterSubtaskIdHistory' : 'filterSubtaskId')?.value || '').trim();
+
+  const qs = isHistory
+    ? (isAdminRole(currentUser?.role) ? new URLSearchParams({ project: projectVal, status: '已完成' }) : new URLSearchParams({ project: projectVal, view: 'history' }))
+    : new URLSearchParams({ project: projectVal, status: '处理中' });
+
+  if (!isAdminRole(currentUser?.role) && watcher && !creator && !requester && !subtaskAssignee && !taskName && !subtaskName && !department && !taskNo && !subtaskId) qs.set('watcher', watcher);
   if (creator) qs.set('creator', creator);
   if (requester) qs.set('requester', requester);
   if (subtaskAssignee) qs.set('subtaskAssignee', subtaskAssignee);
   if (taskName) qs.set('taskName', taskName);
   if (subtaskName) qs.set('subtaskName', subtaskName);
+  if (department) qs.set('department', department);
+  if (taskNo) qs.set('taskNo', taskNo);
+  if (subtaskId) qs.set('subtaskId', subtaskId);
+  return qs;
+}
 
-  const ret = await request(`/tasks?${qs.toString()}`);
-  const box = document.getElementById('tasks');
+function renderTaskCardHtml(t, detail, mode = 'tasks') {
+  const isHistory = mode === 'history';
+  const cc = (t.ccList || []).join(', ') || '-';
+  const doc = t.docLink ? `<a href="${t.docLink}" target="_blank">查看文档</a>` : '-';
+  const subtasks = Array.isArray(detail?.subtasks) ? detail.subtasks : [];
+  const remarks = Array.isArray(detail?.remarks) ? detail.remarks : [];
+  const remarkHtml = remarks.length
+    ? `<div style="margin:8px 0;"><b>备注记录（${remarks.length}）</b><div class="muted" style="margin-top:4px;line-height:1.6;">${remarks.map(r => `• [${fmtTime(r.createdAt)}] ${escHtml(r.author || '-')}：${escHtml(r.content || '')}`).join('<br>')}</div></div>`
+    : '<div class="muted" style="margin:8px 0;">备注记录：暂无</div>';
 
-  if (!ret || ret.length === 0) {
-    box.innerHTML = '<div class="muted">暂无进行中任务</div>';
-    return;
-  }
-
-  box.innerHTML = '<div class="muted">加载任务中...</div>';
-  const cards = [];
-
-  for (const t of ret) {
-    const cc = (t.ccList || []).join(', ') || '-';
-    const doc = t.docLink ? `<a href="${t.docLink}" target="_blank">查看文档</a>` : '-';
-    const detail = await request(`/tasks/${t.taskNo}`);
-    const subtasks = Array.isArray(detail?.subtasks) ? detail.subtasks : [];
-    const remarks = Array.isArray(detail?.remarks) ? detail.remarks : [];
-    const remarkHtml = remarks.length
-      ? `<div style="margin:8px 0;"><b>备注记录（${remarks.length}）</b><div class="muted" style="margin-top:4px;line-height:1.6;">${remarks.map(r => `• [${fmtTime(r.createdAt)}] ${escHtml(r.author || '-')}：${escHtml(r.content || '')}`).join('<br>')}</div></div>`
-      : '<div class="muted" style="margin:8px 0;">备注记录：暂无</div>';
-
-    cards.push(`
-      <div class="task">
-        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div><b>${escHtml(t.taskNo)}</b> ${escHtml(t.name || '-')}</div>
-          <div>
-            ${isAdminRole(currentUser?.role) ? `<button class="btn-sm" style="float:right;" onclick="deleteTaskConfirm('${t.taskNo}')">删除</button>` : ''}
+  if (!isHistory) {
+    return `
+      <div class="task" data-task-no="${escHtml(t.taskNo)}" data-status="${escHtml(t.status || '处理中')}">
+        <div class="task-head">
+          <div class="task-title"><b>${escHtml(t.taskNo)}</b> ${escHtml(t.name || '-')}</div>
+          <div class="task-actions">
+            ${doc}
+            ${isAdminRole(currentUser?.role) ? `<button class="btn-sm" onclick="deleteTaskConfirm('${t.taskNo}')">删除</button>` : ''}
             <button class="btn-sm" onclick="editTaskPrompt('${t.taskNo}')">编辑任务</button>
             <button class="btn-sm" onclick="completeTask('${t.taskNo}')">完成</button>
             <button class="btn-sm" onclick="remarkPrompt('${t.taskNo}')">添加备注</button>
@@ -976,75 +2782,85 @@ async function loadTasks() {
             <button class="btn-sm" onclick="forceCloseTaskPrompt('${t.taskNo}')">强制关闭</button>
           </div>
         </div>
-        <div class="muted" style="margin:6px 0 10px;">
-          文档: ${doc} ｜ 类型: ${escHtml(t.taskType || '新需求')} ｜ 优先级: ${escHtml(t.priority || 'P2')} ｜ 提出人: ${escHtml(t.requester || '-')} ｜ 创建人: ${escHtml(t.creator || '-')}
-          ｜ 抄送: ${escHtml(cc)} ｜ 预计上线: ${escHtml(t.expectedReleaseDate || '-')} ｜ 创建时间(UTC+8): ${fmtTime(t.createdAt)}<br>
-          主任务备注: ${escHtml(t.note || '-')}
-        </div>
+
+        <div class="task-owner muted">责任区：提出人 ${escHtml(t.requester || '-')} ｜ 创建人 ${escHtml(t.creator || '-')} ｜ 抄送 ${escHtml(cc)}</div>
+        <div class="task-time muted">时间区：创建 ${fmtTime(t.createdAt)} ｜ 预计上线 ${escHtml(t.expectedReleaseDate || '-')} ｜ 类型 ${escHtml(t.taskType || '新需求')} ｜ 优先级 ${escHtml(t.priority || 'P2')} ｜ 部门 ${escHtml(t.department || '后端')}<br>主任务备注：${escHtml(t.note || '-')}</div>
+
         ${remarkHtml}
-${renderSubtaskPanel(t.taskNo, subtasks, false)}
+        ${renderSubtaskPanel(t.taskNo, subtasks, false, t.status)}
       </div>
-    `);
+    `;
   }
 
+  return `
+    <div class="task" data-task-no="${escHtml(t.taskNo)}" data-status="${escHtml(t.status || '已完成')}">
+      <div class="task-head">
+        <div class="task-title"><b>${escHtml(t.taskNo)}</b> ${escHtml(t.name || '-')}</div>
+        <div>${isAdminRole(currentUser?.role) ? `<button class="btn-sm" onclick="deleteTaskConfirm('${t.taskNo}')">删除</button>` : ''}</div>
+      </div>
+      <div class="task-owner muted">责任区：提出人 ${escHtml(t.requester || '-')} ｜ 创建人 ${escHtml(t.creator || '-')} ｜ 抄送 ${escHtml(cc)}</div>
+      <div class="task-time muted">时间区：创建 ${fmtTime(t.createdAt)} ｜ 完成 ${fmtTime(t.completedAt)} ｜ 到期 ${fmtTime(t.dueAt)} ｜ ${t.isDelayed ? '延期' : '按时'}<br>类型 ${escHtml(t.taskType || '新需求')} ｜ 优先级 ${escHtml(t.priority || 'P2')} ｜ 部门 ${escHtml(t.department || '后端')} ｜ 预计上线 ${escHtml(t.expectedReleaseDate || '-')}<br>主任务备注：${escHtml(t.note || '-')}</div>
+      ${remarkHtml}
+      ${renderSubtaskPanel(t.taskNo, subtasks, false, t.status)}
+    </div>
+  `;
+}
+
+async function patchTaskCard(taskNo) {
+  if (!taskNo) return refreshCurrentListKeepScroll();
+  const mode = currentSection === 'history' ? 'history' : 'tasks';
+  const box = document.getElementById(mode === 'history' ? 'historyTasks' : 'tasks');
+  if (!box) return;
+
+  const qs = getTaskListQuery(mode, taskNo);
+  const list = await request(`/tasks?${qs.toString()}`);
+  const task = Array.isArray(list) ? list.find(x => String(x.taskNo) === String(taskNo)) : null;
+  const oldNode = box.querySelector(`.task[data-task-no="${CSS.escape(String(taskNo))}"]`);
+
+  if (!task) {
+    if (oldNode) oldNode.remove();
+    if (!box.querySelector('.task')) {
+      box.innerHTML = mode === 'history' ? '<div class="muted">暂无历史任务</div>' : '<div class="muted">暂无进行中任务</div>';
+    }
+    return;
+  }
+
+  const detail = await request(`/tasks/${taskNo}`);
+  const html = renderTaskCardHtml(task, detail, mode);
+  if (oldNode) oldNode.outerHTML = html;
+  else box.insertAdjacentHTML('afterbegin', html);
+  decorateTaskTags(mode === 'history' ? 'historyTasks' : 'tasks');
+}
+
+async function loadTasks() {
+  const ret = await request(`/tasks?${getTaskListQuery('tasks').toString()}`);
+  const box = document.getElementById('tasks');
+  if (!ret || ret.length === 0) {
+    box.innerHTML = '<div class="muted">暂无进行中任务</div>';
+    return;
+  }
+
+  const cards = [];
+  for (const t of ret) {
+    const detail = await request(`/tasks/${t.taskNo}`);
+    cards.push(renderTaskCardHtml(t, detail, 'tasks'));
+  }
   box.innerHTML = cards.join('');
 }
 
 async function loadHistory() {
-  const projectVal = project.value || '18game';
-  const creator = (document.getElementById('filterCreatorHistory')?.value || '').trim();
-  const requester = (document.getElementById('filterRequesterHistory')?.value || '').trim();
-  const subtaskAssignee = (document.getElementById('filterSubtaskAssigneeHistory')?.value || '').trim();
-  const taskName = (document.getElementById('filterTaskNameHistory')?.value || '').trim();
-  const subtaskName = (document.getElementById('filterSubtaskNameHistory')?.value || '').trim();
-  const watcher = (currentUser?.tgUsername || currentUser?.username || '').trim();
-  const qs = isAdminRole(currentUser?.role)
-    ? new URLSearchParams({ project: projectVal, status: '已完成' })
-    : new URLSearchParams({ project: projectVal, view: 'history' });
-  if (!isAdminRole(currentUser?.role) && watcher && !creator && !requester && !subtaskAssignee && !taskName && !subtaskName) qs.set('watcher', watcher);
-  if (creator) qs.set('creator', creator);
-  if (requester) qs.set('requester', requester);
-  if (subtaskAssignee) qs.set('subtaskAssignee', subtaskAssignee);
-  if (taskName) qs.set('taskName', taskName);
-  if (subtaskName) qs.set('subtaskName', subtaskName);
-  const ret = await request(`/tasks?${qs.toString()}`);
+  const ret = await request(`/tasks?${getTaskListQuery('history').toString()}`);
   const box = document.getElementById('historyTasks');
-
   if (!ret || ret.length === 0) {
     box.innerHTML = '<div class="muted">暂无历史任务</div>';
     return;
   }
 
-  box.innerHTML = '<div class="muted">加载任务中...</div>';
   const cards = [];
-
   for (const t of ret) {
-    const cc = (t.ccList || []).join(', ') || '-';
     const detail = await request(`/tasks/${t.taskNo}`);
-    const subtasks = Array.isArray(detail?.subtasks) ? detail.subtasks : [];
-    const remarks = Array.isArray(detail?.remarks) ? detail.remarks : [];
-    const remarkHtml = remarks.length
-      ? `<div style="margin:8px 0;"><b>备注记录（${remarks.length}）</b><div class="muted" style="margin-top:4px;line-height:1.6;">${remarks.map(r => `• [${fmtTime(r.createdAt)}] ${escHtml(r.author || '-')}：${escHtml(r.content || '')}`).join('<br>')}</div></div>`
-      : '<div class="muted" style="margin:8px 0;">备注记录：暂无</div>';
-
-    cards.push(`
-      <div class="task">
-        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-          <div><b>${escHtml(t.taskNo)}</b> ${escHtml(t.name || '-')}</div>
-          <div>${isAdminRole(currentUser?.role) ? `<button class="btn-sm" style="float:right;" onclick="deleteTaskConfirm('${t.taskNo}')">删除</button>` : ''}</div>
-        </div>
-        <div class="muted" style="margin:6px 0 10px;">
-          类型: ${escHtml(t.taskType || '新需求')} ｜ 优先级: ${escHtml(t.priority || 'P2')} ｜ 提出人: ${escHtml(t.requester || '-')} ｜ 创建人: ${escHtml(t.creator || '-')} ｜ 抄送: ${escHtml(cc)}<br>
-          任务到期: ${fmtTime(t.dueAt)} ｜ 预计上线: ${escHtml(t.expectedReleaseDate || '-')}<br>
-          创建时间(UTC+8): ${fmtTime(t.createdAt)} ｜ 完成时间(UTC+8): ${fmtTime(t.completedAt)} ｜ ${t.isDelayed ? '延期' : '按时'}<br>
-          主任务备注: ${escHtml(t.note || '-')}
-        </div>
-        ${remarkHtml}
-${renderSubtaskPanel(t.taskNo, subtasks, false)}
-      </div>
-    `);
+    cards.push(renderTaskCardHtml(t, detail, 'history'));
   }
-
   box.innerHTML = cards.join('');
 }
 
@@ -1070,11 +2886,29 @@ function ymdOffset(days = 0) {
   return `${y}-${m}-${dd}`;
 }
 
+function currentMonthBoundsYmd() {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  const first = new Date(Date.UTC(y, m, 1));
+  const last = new Date(Date.UTC(y, m + 1, 0));
+  return {
+    from: `${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, '0')}-${String(first.getUTCDate()).padStart(2, '0')}`,
+    to: `${last.getUTCFullYear()}-${String(last.getUTCMonth() + 1).padStart(2, '0')}-${String(last.getUTCDate()).padStart(2, '0')}`
+  };
+}
+
 function onDashboardRangeChange() {
   const r = (dashRange?.value || 'month').trim();
   if (r === 'all') {
     dashFrom.value = '';
     dashTo.value = '';
+    return;
+  }
+  if (r === 'month') {
+    const b = currentMonthBoundsYmd();
+    dashFrom.value = b.from;
+    dashTo.value = b.to;
     return;
   }
   dashTo.value = ymdOffset(0);
@@ -1088,6 +2922,12 @@ function onPersonalRangeChange() {
   if (r === 'all') {
     pdashFrom.value = '';
     pdashTo.value = '';
+    return;
+  }
+  if (r === 'month') {
+    const b = currentMonthBoundsYmd();
+    pdashFrom.value = b.from;
+    pdashTo.value = b.to;
     return;
   }
   pdashTo.value = ymdOffset(0);
@@ -1333,6 +3173,36 @@ async function loadPersonalDashboard() {
   `;
 }
 
+async function fileToUploadPayload(file) {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      fileName: file.name,
+      mimeType: file.type || 'image/jpeg',
+      size: file.size,
+      data: String(reader.result || '')
+    });
+    reader.onerror = () => reject(reader.error || new Error('读取图片失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadSubtaskImagesFromInput(inputId) {
+  const el = document.getElementById(inputId);
+  const files = Array.from(el?.files || []);
+  if (!files.length) return [];
+  if (files.length > 3) throw new Error('最多只能上传3张图片');
+  for (const f of files) {
+    if (!String(f.type || '').startsWith('image/')) throw new Error(`不是图片文件：${f.name}`);
+    if (f.size > 8 * 1024 * 1024) throw new Error(`单张图片不能超过8MB：${f.name}`);
+  }
+  const payloadFiles = [];
+  for (const f of files) payloadFiles.push(await fileToUploadPayload(f));
+  const ret = await request('/uploads/subtasks', 'POST', { files: payloadFiles });
+  if (!ret.ok) throw new Error(ret.error || '图片上传失败');
+  return Array.isArray(ret.attachments) ? ret.attachments : [];
+}
+
 async function createSubtaskPrompt(taskNo) {
   const html = `
     <div class="row">
@@ -1357,6 +3227,7 @@ async function createSubtaskPrompt(taskNo) {
     </div>
     <div><label class="muted">子任务描述（可选）</label><input id="cst_desc" placeholder="子任务描述（如：联调支付链路）" /></div>
     <div><label class="muted">备注（可选）</label><input id="cst_note" placeholder="备注" /></div>
+    <div><label class="muted">图片附件（可选，最多3张，每张≤8MB）</label><input id="cst_images" type="file" accept="image/*" multiple /></div>
     <div class="muted" style="margin-top:6px;white-space:pre-line;">命令模板：
 /task 新增子任务 #${taskNo} 标题=... 负责人=@xxx 周期=1天 开始时间=YYYY-MM-DDTHH:mm:ss 子任务描述=... 抄送=@a,@b 备注=... 校验=是|否 依赖=12,13</div>
   `;
@@ -1379,13 +3250,9 @@ async function createSubtaskPrompt(taskNo) {
   bindTimePicker(dueEl);
   const recomputeCycle = () => {
     if (!recEl || !cycleEl || !dueEl) return;
-    const s = Date.parse((recEl.value || '').trim().replace(' ', 'T'));
-    const e = Date.parse((dueEl.value || '').trim().replace(' ', 'T'));
-    if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) { cycleEl.value = ''; return; }
-    const ms = e - s;
-    const d = Math.floor(ms / 86400000);
-    const h = Math.floor((ms % 86400000) / 3600000);
-    cycleEl.value = `${d}天${h}小时`;
+    const ms = calcBusinessDurationMs(recEl.value || '', dueEl.value || '');
+    if (ms === null) { cycleEl.value = ''; return; }
+    cycleEl.value = formatBusinessDuration(ms);
   };
   recEl?.addEventListener('input', recomputeCycle);
   dueEl?.addEventListener('input', recomputeCycle);
@@ -1421,10 +3288,16 @@ async function createSubtaskPrompt(taskNo) {
     note: (document.getElementById('cst_note')?.value || '').trim() || undefined
   };
 
+  try {
+    const attachments = await uploadSubtaskImagesFromInput('cst_images');
+    if (attachments.length) body.attachments = attachments;
+  } catch (e) {
+    return modalAlert(e.message || '图片上传失败');
+  }
+
   const ret = await request(`/tasks/${taskNo}/subtasks`, 'POST', body);
   await modalAlert(JSON.stringify(ret, null, 2), '新增子任务结果');
-  loadTasks();
-  loadHistory();
+  await patchTaskCard(taskNo);
 }
 
 async function editSubtaskTimingPrompt(id, taskNo='') {
@@ -1443,7 +3316,7 @@ async function editSubtaskTimingPrompt(id, taskNo='') {
   const html = `
     <div class="row">
       <div><label class="muted">开始时间</label><input id="se_receivedAt" value="${escHtml(toDateTimeLocal(s.receivedAt || ''))}" /></div>
-      <div><label class="muted">完成时间</label><input id="se_completedAt" value="${escHtml(toDateTimeLocal(s.completedAt || ''))}" /></div>
+      <div><label class="muted">到期时间</label><input id="se_dueAt" value="${escHtml(toDateTimeLocal(s.dueAt || ''))}" /></div>
     </div>
     <div class="row">
       <div><label class="muted">周期（自动计算）</label><input id="se_cycle" value="" readonly style="background:#f7f7f7;cursor:not-allowed;" /></div>
@@ -1457,40 +3330,35 @@ async function editSubtaskTimingPrompt(id, taskNo='') {
     actions: [{ text: '取消', value: null }, { text: '保存', value: 'ok' }]
   });
   const recEl = document.getElementById('se_receivedAt');
-  const doneEl = document.getElementById('se_completedAt');
+  const dueEl = document.getElementById('se_dueAt');
   const cycleEl = document.getElementById('se_cycle');
   bindTimePicker(recEl);
-  bindTimePicker(doneEl);
+  bindTimePicker(dueEl);
   const recomputeCycle = () => {
-    const sTs = Date.parse((recEl?.value || '').trim().replace(' ', 'T'));
-    const eTs = Date.parse((doneEl?.value || '').trim().replace(' ', 'T'));
-    if (!Number.isFinite(sTs) || !Number.isFinite(eTs) || eTs < sTs) {
+    const ms = calcBusinessDurationMs(recEl?.value || '', dueEl?.value || '');
+    if (ms === null) {
       if (cycleEl) cycleEl.value = '';
       return;
     }
-    const ms = eTs - sTs;
-    const d = Math.floor(ms / 86400000);
-    const h = Math.floor((ms % 86400000) / 3600000);
-    if (cycleEl) cycleEl.value = `${d}天${h}小时`;
+    if (cycleEl) cycleEl.value = formatBusinessDuration(ms);
   };
   recEl?.addEventListener('input', recomputeCycle);
-  doneEl?.addEventListener('input', recomputeCycle);
+  dueEl?.addEventListener('input', recomputeCycle);
   recomputeCycle();
 
   const ok = await modalPromise;
   if (ok !== 'ok') return;
 
   const receivedAt = (recEl?.value || '').trim();
-  const completedAt = (doneEl?.value || '').trim();
+  const dueAt = (dueEl?.value || '').trim();
   if (!receivedAt) return modalAlert('开始时间不能为空');
-  if (!completedAt) return modalAlert('完成时间不能为空');
+  if (!dueAt) return modalAlert('到期时间不能为空');
 
-  const patch = { receivedAt, completedAt };
+  const patch = { receivedAt, dueAt };
   const ret = await request(`/subtasks/${id}`, 'PATCH', patch);
   await modalAlert(JSON.stringify(ret, null, 2), ret?.ok ? '保存成功' : '保存失败');
   if (ret?.ok) {
-    loadTasks();
-    loadHistory();
+    await patchTaskCard(taskNo || s?.taskNo || '');
   }
 }
 
@@ -1526,19 +3394,17 @@ async function operateSubtaskPrompt(id, taskNo='') {
   else return modalAlert('仅支持 start/complete/cancel');
 
   await modalAlert(JSON.stringify(ret, null, 2), '子任务处理结果');
-  loadTasks();
-  loadHistory();
+  await patchTaskCard(taskNo || s?.taskNo || '');
 }
 
-async function subtaskRemarkPrompt(id) {
+async function subtaskRemarkPrompt(id, taskNo='') {
   const note = await modalPrompt({ title: `子任务 #${id} 添加备注`, label: '请输入备注内容', value: '' });
   if (note === null) return;
   if (!String(note).trim()) return modalAlert('备注不能为空');
   const ret = await request(`/subtasks/${id}/remark`, 'POST', { note: String(note).trim() });
   await modalAlert(JSON.stringify(ret, null, 2), ret.ok ? '备注成功' : '备注失败');
   if (ret.ok) {
-    loadTasks();
-    loadHistory();
+    await patchTaskCard(taskNo || '');
   }
 }
 
@@ -1562,8 +3428,12 @@ async function deleteTaskConfirm(taskNo) {
   if (!ok) return;
   const ret = await request(`/tasks/${taskNo}/delete`, 'POST', {});
   await modalAlert(JSON.stringify(ret, null, 2), '删除主任务结果');
-  loadTasks();
-  loadHistory();
+  const box = document.getElementById(currentSection === 'history' ? 'historyTasks' : 'tasks');
+  const node = box?.querySelector(`.task[data-task-no="${CSS.escape(String(taskNo))}"]`);
+  if (node) node.remove();
+  if (box && !box.querySelector('.task')) {
+    box.innerHTML = currentSection === 'history' ? '<div class="muted">暂无历史任务</div>' : '<div class="muted">暂无进行中任务</div>';
+  }
 }
 
 async function deleteSubtaskConfirm(id, taskNo = '') {
@@ -1572,8 +3442,7 @@ async function deleteSubtaskConfirm(id, taskNo = '') {
   if (!ok) return;
   const ret = await request(`/subtasks/${id}/delete`, 'POST', {});
   await modalAlert(JSON.stringify(ret, null, 2), '删除子任务结果');
-  loadTasks();
-  loadHistory();
+  await patchTaskCard(taskNo || ret?.taskNo || '');
 }
 
 async function forceCloseTaskPrompt(taskNo) {
@@ -1584,8 +3453,7 @@ async function forceCloseTaskPrompt(taskNo) {
   if (!ok) return;
   const ret = await request(`/tasks/${taskNo}/force-close`, 'POST', { reason: reason.trim() });
   await modalAlert(JSON.stringify(ret, null, 2), '强制关闭结果');
-  loadTasks();
-  loadHistory();
+  await patchTaskCard(taskNo);
 }
 
 async function editTaskPrompt(taskNo) {
@@ -1652,6 +3520,22 @@ async function editTaskPrompt(taskNo) {
     </div>
     <div class="row">
       <div>
+        <label class="muted">部门</label>
+        <select id="edit_department">
+          <option value="产品" ${(t.department || '后端') === '产品' ? 'selected' : ''}>产品</option>
+          <option value="前端" ${(t.department || '后端') === '前端' ? 'selected' : ''}>前端</option>
+          <option value="后端" ${(t.department || '后端') === '后端' ? 'selected' : ''}>后端</option>
+          <option value="安卓" ${(t.department || '后端') === '安卓' ? 'selected' : ''}>安卓</option>
+          <option value="iOS" ${(t.department || '后端') === 'iOS' ? 'selected' : ''}>iOS</option>
+          <option value="运维" ${(t.department || '后端') === '运维' ? 'selected' : ''}>运维</option>
+          <option value="运营" ${(t.department || '后端') === '运营' ? 'selected' : ''}>运营</option>
+          <option value="QA" ${(t.department || '后端') === 'QA' ? 'selected' : ''}>QA</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+    <div class="row">
+      <div>
         <label class="muted">抄送人（逗号分隔）</label>
         <input id="edit_cc" value="${escHtml((t.ccList || []).join(','))}" />
       </div>
@@ -1690,6 +3574,7 @@ async function editTaskPrompt(taskNo) {
     project: (document.getElementById('edit_project')?.value || '18game').trim(),
     taskType: (document.getElementById('edit_taskType')?.value || '新需求').trim(),
     priority: (document.getElementById('edit_priority')?.value || 'P2').trim(),
+    department: (document.getElementById('edit_department')?.value || '后端').trim(),
     ccList: (document.getElementById('edit_cc')?.value || '').trim(),
     note: (document.getElementById('edit_note')?.value || '').trim()
   };
@@ -1701,8 +3586,7 @@ async function editTaskPrompt(taskNo) {
 
   const saveRet = await request(`/tasks/${taskNo}`, 'PATCH', patch);
   await modalAlert(JSON.stringify(saveRet));
-  loadTasks();
-  loadHistory();
+  await patchTaskCard(taskNo);
 }
 
 async function completeTask(taskNo) {
@@ -1712,8 +3596,7 @@ async function completeTask(taskNo) {
     note: (noteInput || '').trim() || undefined
   });
   await modalAlert(JSON.stringify(ret));
-  loadTasks();
-  loadHistory();
+  await patchTaskCard(taskNo);
 }
 
 async function remarkPrompt(taskNo) {
@@ -1722,6 +3605,7 @@ async function remarkPrompt(taskNo) {
   if (!content.trim()) return modalAlert('备注不能为空');
   const ret = await request(`/tasks/${taskNo}/remarks`, 'POST', { content: content.trim() });
   await modalAlert(JSON.stringify(ret));
+  if (ret?.ok) await patchTaskCard(taskNo);
 }
 
 async function viewRemarks(taskNo) {
@@ -1731,6 +3615,84 @@ async function viewRemarks(taskNo) {
   await modalAlert(lines.length ? lines.join('\n') : '暂无备注历史', `任务 ${taskNo} 备注历史`);
 }
 
+function applyTheme(theme) {
+  const t = theme === 'dark' ? 'dark' : 'light';
+  document.body.setAttribute('data-theme', t);
+  localStorage.setItem('task_theme', t);
+}
+
+function initThemeToggle() {
+  const saved = localStorage.getItem('task_theme') || 'light';
+  applyTheme(saved);
+  const btn = document.getElementById('themeToggleBtn');
+  if (!btn) return;
+  btn.onclick = () => {
+    const now = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(now);
+  };
+}
+
+function decorateTaskTags(scopeId) {
+  const root = document.getElementById(scopeId);
+  if (!root) return;
+  const nodes = root.querySelectorAll('.task');
+  nodes.forEach(node => {
+    const txt = (node.textContent || '').toUpperCase();
+    if (node.querySelector('.tag')) return;
+
+    let pri = '';
+    if (txt.includes('P0')) pri = 'P0';
+    else if (txt.includes('P1')) pri = 'P1';
+    else if (txt.includes('P2')) pri = 'P2';
+    else if (txt.includes('P3')) pri = 'P3';
+
+    let state = '';
+    const taskStatus = String(node.dataset.status || '').trim();
+    if (taskStatus === '已完成') state = 'done';
+    else if (taskStatus === '阻塞' || taskStatus === '已取消') state = 'block';
+    else if (taskStatus === '处理中' || taskStatus === '进行中' || taskStatus === '待处理' || taskStatus === '待启动') state = 'wip';
+
+    const anchor = node.querySelector('.task-title') || node.querySelector('h4,h5,h3,.muted,td') || node.firstElementChild;
+    if (!anchor) return;
+
+    const box = document.createElement('span');
+    if (pri) {
+      const p = document.createElement('span');
+      p.className = `tag tag-pri-${pri.toLowerCase()}`;
+      p.textContent = pri;
+      box.appendChild(p);
+    }
+    if (state) {
+      const s = document.createElement('span');
+      s.className = `tag tag-state-${state}`;
+      s.textContent = state === 'done' ? '已完成' : state === 'block' ? '阻塞' : '进行中';
+      box.appendChild(s);
+    }
+    if (box.childNodes.length) anchor.appendChild(box);
+  });
+}
+
+function installRenderDecorators() {
+  if (typeof loadTasks === 'function') {
+    const _loadTasks = loadTasks;
+    loadTasks = async function (...args) {
+      const ret = await _loadTasks.apply(this, args);
+      decorateTaskTags('tasks');
+      return ret;
+    };
+  }
+  if (typeof loadHistory === 'function') {
+    const _loadHistory = loadHistory;
+    loadHistory = async function (...args) {
+      const ret = await _loadHistory.apply(this, args);
+      decorateTaskTags('historyTasks');
+      return ret;
+    };
+  }
+}
+
+initThemeToggle();
+installRenderDecorators();
 if (token) initMe();
 </script>
 </body>
